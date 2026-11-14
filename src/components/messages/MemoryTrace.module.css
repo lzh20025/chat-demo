@@ -1,0 +1,117 @@
+.item {
+  position: relative;
+  margin-bottom: 6px;
+  padding: 12px;
+  border-radius: 12px;
+  transition: background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+
+  &:hover,
+  &:focus-within {
+    background-color: var(--dsw-alias-interactive-bg-hover);
+  }
+
+  &:hover .more,
+  &:focus-within .more {
+    opacity: 1;
+  }
+}
+
+.dimmed {
+  .title,
+  .detail {
+    opacity: 0.45;
+  }
+
+  .title {
+    text-decoration: line-through;
+  }
+}
+
+.more {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  opacity: 0;
+  transition: opacity var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.moreOpen {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .more {
+    opacity: 1;
+  }
+}
+
+.note {
+  margin-top: 6px;
+  font: var(--dsw-font-xs-13);
+  color: var(--dsw-alias-label-tertiary);
+  overflow-wrap: anywhere;
+}
+
+.correctModal {
+  width: 440px;
+}
+
+.editor {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 96px;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  outline: none;
+  resize: vertical;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: 14px/22px var(--dsw-font-family);
+
+  &:focus {
+    border-color: var(--dsw-alias-button-primary-fill);
+  }
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: var(--dsw-font-xs-13);
+  color: var(--dsw-alias-label-tertiary);
+
+  > svg {
+    flex-shrink: 0;
+  }
+}
+
+.title {
+  margin-top: 6px;
+  padding-right: 28px;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.detail {
+  margin-top: 4px;
+  font: var(--dsw-font-xs-13);
+  color: var(--dsw-alias-label-tertiary);
+  overflow-wrap: anywhere;
+}
+
+.raw {
+  margin: 0 12px 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background-color: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 19px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

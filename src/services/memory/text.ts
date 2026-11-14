@@ -1,7 +1,7 @@
 import { getVisibleMessages } from '../chat/branches.js'
 import type { MemoryDigest, MemoryProfile } from '../chat/db.js'
 import { getReplyText } from '../chat/reply.js'
-import type { Message, Session } from '../chat/types.js'
+import type { MemoryChat, Message, Session } from '../chat/types.js'
 import type { Locale } from '../settings.js'
 import { getPrompts, SKIP_MARK } from './prompts.js'
 
@@ -115,9 +115,66 @@ export const parseProfileOutput = (output: string): string => {
   return clip(fenced ? fenced[1] : output, PROFILE_OUTPUT_LIMIT)
 }
 
+type RecentEntry = {
+  sessionId: string
+  title: string
+  text: string
+  excerpt: string
+  updatedAt: number
+}
+
 /**
- * 拼出注入 system 的记忆块。当前会话不出现在近期对话里；
- * 有摘要的会话用摘要，摘要落后或尚未生成的用原话节选。没有任何内容时返回空字符串。
+ * 注入记忆块的近期对话（由新到旧）：有摘要的会话用摘要，摘要落后或尚未生成的补上原话节选。
+ * excerpt 是用户原话，不进入记忆块，只供界面展示。
+ */
+const selectRecent = ({
+  digests,
+  pending,
+  currentSessionId,
+  locale,
+}: {
+  digests: MemoryDigest[]
+  pending: PendingExcerpt[]
+  currentSessionId: string | null
+  locale: Locale
+}): RecentEntry[] => {
+  const prompts = getPrompts(locale)
+  const entries = new Map<string, RecentEntry>()
+  for (const digest of digests) {
+    if (digest.summary) {
+      entries.set(digest.sessionId, {
+        sessionId: digest.sessionId,
+        title: digest.title,
+        text: clip(oneLine(digest.summary), SUMMARY_BUDGET),
+        excerpt: digest.excerpt ?? '',
+        updatedAt: digest.updatedAt,
+      })
+    }
+  }
+  for (const item of pending) {
+    // 待处理的会话有比摘要更新的内容：原话节选排在已有摘要之后一并给出
+    if (!item.excerpt) {
+      continue
+    }
+    const previous = entries.get(item.sessionId)
+    const raw = `${prompts.rawLabel}: ${item.excerpt}`
+    entries.set(item.sessionId, {
+      sessionId: item.sessionId,
+      title: item.title,
+      text: previous ? `${previous.text} ${raw}` : raw,
+      excerpt: item.excerpt,
+      updatedAt: item.updatedAt,
+    })
+  }
+  if (currentSessionId !== null) {
+    entries.delete(currentSessionId)
+  }
+  return [...entries.values()].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, RECENT_LIMIT)
+}
+
+/**
+ * 注入 system 的记忆块：档案 + 近期对话（不含当前会话）。没有任何内容时 block 为空字符串。
+ * chats 与记忆块里的近期对话一一对应，带用户原话节选，供来源面板展示。
  */
 export const renderMemoryBlock = ({
   profile,
@@ -131,41 +188,25 @@ export const renderMemoryBlock = ({
   pending: PendingExcerpt[]
   currentSessionId: string | null
   locale: Locale
-}): string => {
+}): { block: string; chats: MemoryChat[] } => {
   const prompts = getPrompts(locale)
-  const entries = new Map<string, { title: string; text: string; updatedAt: number }>()
-  for (const digest of digests) {
-    if (digest.summary) {
-      entries.set(digest.sessionId, {
-        title: digest.title,
-        text: clip(oneLine(digest.summary), SUMMARY_BUDGET),
-        updatedAt: digest.updatedAt,
-      })
-    }
-  }
-  for (const item of pending) {
-    // 待处理的会话有比摘要更新的内容：原话节选排在已有摘要之后一并给出
-    if (!item.excerpt) {
-      continue
-    }
-    const previous = entries.get(item.sessionId)
-    const raw = `${prompts.rawLabel}: ${item.excerpt}`
-    entries.set(item.sessionId, {
-      title: item.title,
-      text: previous ? `${previous.text} ${raw}` : raw,
-      updatedAt: item.updatedAt,
-    })
-  }
-  if (currentSessionId !== null) {
-    entries.delete(currentSessionId)
-  }
-  const recent = [...entries.values()]
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-    .slice(0, RECENT_LIMIT)
+  const recent = selectRecent({ digests, pending, currentSessionId, locale })
   const sections: string[] = []
+  // 每条记忆一个编号，模型在回答末尾按编号报出实际用到的条目
+  let count = 0
+  const nextId = () => `[m${(count += 1)}]`
   const profileText = profile?.content.trim()
   if (profileText) {
-    sections.push(`${prompts.profileHeading}\n${clip(profileText, PROFILE_BUDGET)}`)
+    const lines = clip(profileText, PROFILE_BUDGET)
+      .split('\n')
+      .map((line) => {
+        if (!line.trim() || /^\s*#{1,6}\s/.test(line)) {
+          return line
+        }
+        const bullet = line.match(/^(\s*[-*]\s+)(.*)$/)
+        return bullet ? `${bullet[1]}${nextId()} ${bullet[2]}` : `${nextId()} ${line}`
+      })
+    sections.push(`${prompts.profileHeading}\n${lines.join('\n')}`)
   }
   if (recent.length) {
     sections.push(
@@ -173,15 +214,33 @@ export const renderMemoryBlock = ({
         prompts.recentHeading,
         ...recent.map(
           (item) =>
-            `- ${formatTime(item.updatedAt)} "${oneLine(item.title) || prompts.untitled}": ${item.text}`
+            `- ${nextId()} ${formatTime(item.updatedAt)} "${oneLine(item.title) || prompts.untitled}": ${item.text}`
         ),
       ].join('\n')
     )
   }
   if (!sections.length) {
-    return ''
+    return { block: '', chats: [] }
   }
-  return `<memory>\n${prompts.injectHeader}\n\n${sections.join('\n\n')}\n</memory>`
+  const muted = profile?.muted ?? []
+  if (muted.length) {
+    sections.push(
+      [prompts.mutedHeading, prompts.mutedIntro, ...muted.map((item) => `- ${oneLine(item)}`)].join(
+        '\n'
+      )
+    )
+  }
+  // 归因要求放在最后，离回答最近，模型更容易照做
+  sections.push(prompts.injectAttribution)
+  return {
+    block: `<memory>\n${prompts.injectHeader}\n\n${sections.join('\n\n')}\n</memory>`,
+    chats: recent.map(({ sessionId, title, updatedAt, excerpt }) => ({
+      sessionId,
+      title,
+      updatedAt,
+      excerpt,
+    })),
+  }
 }
 
 /** 整理档案时发给模型的 user 消息 */
@@ -203,6 +262,9 @@ export const buildDreamInput = ({
     `${prompts.dreamToday}: ${formatTime(now)}`,
     `${prompts.dreamCurrentProfile}:\n${current ? clip(current, PROFILE_OUTPUT_LIMIT) : prompts.dreamEmptyProfile}`,
     ...(edited ? [prompts.dreamUserEdited] : []),
+    ...(profile?.muted?.length
+      ? [`${prompts.dreamMuted}:\n${profile.muted.map((item) => `- ${oneLine(item)}`).join('\n')}`]
+      : []),
     [
       `${prompts.dreamNewDigests}:`,
       ...[...digests]
@@ -214,3 +276,128 @@ export const buildDreamInput = ({
     ].join('\n'),
   ].join('\n\n')
 }
+
+/** 记忆块拆回结构化内容，供界面展示某条回答参考的记忆 */
+export type MemoryTrace = {
+  /** 条目是否带编号；没有编号的旧记忆块无法归因，只能整体展示 */
+  numbered: boolean
+  /** 档案按 Markdown 小节分组；小节标题之前的内容归入 heading 为 null 的组 */
+  profile: { heading: string | null; items: { id: string | null; text: string }[] }[]
+  recent: {
+    id: string | null
+    time: string
+    title: string
+    text: string
+    /** 用户原话；回答上没有保存时缺省，界面退回显示摘要 */
+    chat?: MemoryChat
+  }[]
+}
+
+const TRACE_LOCALES: Locale[] = ['zh-CN', 'en-US']
+const ITEM_ID = /^\[(m\d+)\]\s+/
+const RECENT_LINE = /^- (?:\[(m\d+)\] )?(\d{4}-\d{2}-\d{2} \d{2}:\d{2}) "(.*?)": (.*)$/
+
+/**
+ * `renderMemoryBlock` 的逆操作。记忆块按生成时的语言保存，两种语言的标题都认；
+ * 找不到任何一节（格式已变或内容损坏）时返回 null，由调用方退回显示原文。
+ * chats 是随回答保存的用户原话，与近期对话一一对应时挂到各条上。
+ */
+export const parseMemoryBlock = (block: string, chats: MemoryChat[] = []): MemoryTrace | null => {
+  const lines = block
+    .replace(/^<memory>\n?/, '')
+    .replace(/\n?<\/memory>\s*$/, '')
+    .split('\n')
+  const prompts = TRACE_LOCALES.map(getPrompts)
+  const profileAt = lines.findIndex((line) => prompts.some((p) => p.profileHeading === line))
+  // 档案正文可由用户编辑，可能出现同名标题：近期对话总在最后一节，取最后一次出现
+  const recentAt = lines.findLastIndex((line) => prompts.some((p) => p.recentHeading === line))
+  if (profileAt === -1 && recentAt === -1) {
+    return null
+  }
+  const profile: MemoryTrace['profile'] = []
+  if (profileAt !== -1) {
+    // 档案之后可能是近期对话、不要提及或输出格式说明，到最近的一节为止
+    const next = lines.findIndex(
+      (line, index) =>
+        index > profileAt &&
+        (index === recentAt ||
+          prompts.some(
+            (p) => p.mutedHeading === line || p.injectAttribution.startsWith(`${line}\n`)
+          ))
+    )
+    const end = next === -1 ? lines.length : next
+    for (const raw of lines.slice(profileAt + 1, end)) {
+      const line = raw.trim()
+      if (!line) {
+        continue
+      }
+      const heading = line.match(/^#{1,6}\s+(.*)$/)
+      if (heading) {
+        profile.push({ heading: heading[1], items: [] })
+        continue
+      }
+      let group = profile.at(-1)
+      if (!group) {
+        group = { heading: null, items: [] }
+        profile.push(group)
+      }
+      const text = line.replace(/^[-*]\s+/, '')
+      group.items.push({ id: text.match(ITEM_ID)?.[1] ?? null, text: text.replace(ITEM_ID, '') })
+    }
+  }
+  const recent: MemoryTrace['recent'] = []
+  if (recentAt !== -1) {
+    for (const line of lines.slice(recentAt + 1)) {
+      // 之后是不要提及的清单或输出格式说明，不属于记忆
+      if (line.startsWith('# ')) {
+        break
+      }
+      if (!line.trim()) {
+        continue
+      }
+      const match = line.match(RECENT_LINE)
+      recent.push(
+        match
+          ? { id: match[1] ?? null, time: match[2], title: match[3], text: match[4] }
+          : { id: null, time: '', title: '', text: line.replace(/^-\s+/, '') }
+      )
+    }
+  }
+  if (chats.length === recent.length) {
+    recent.forEach((item, index) => {
+      item.chat = chats[index]
+    })
+  }
+  const groups = profile.filter((group) => group.items.length)
+  return {
+    numbered:
+      groups.some((group) => group.items.some((item) => item.id)) || recent.some((item) => item.id),
+    profile: groups,
+    recent,
+  }
+}
+
+/**
+ * 只留下回答实际用到的记忆。used 是模型在回答末尾报出的编号；
+ * 带编号的记忆块没有收到报告（回答被中断或模型没照做）时视为没有用到。
+ * 没有编号的旧记忆块无法归因，原样返回。
+ */
+export const pickUsedMemory = (trace: MemoryTrace, used: string[] | undefined): MemoryTrace => {
+  if (!trace.numbered) {
+    return trace
+  }
+  const ids = new Set(used)
+  return {
+    numbered: true,
+    profile: trace.profile
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) => item.id !== null && ids.has(item.id)),
+      }))
+      .filter((group) => group.items.length),
+    recent: trace.recent.filter((item) => item.id !== null && ids.has(item.id)),
+  }
+}
+
+export const countMemoryItems = (trace: MemoryTrace): number =>
+  trace.profile.reduce((sum, group) => sum + group.items.length, 0) + trace.recent.length

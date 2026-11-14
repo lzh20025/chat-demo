@@ -105,6 +105,92 @@
   flex-shrink: 0;
 }
 
+.log {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.logItem {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+
+  > details[open] > .logSummary {
+    border-bottom: 1px solid var(--dsw-alias-border-l2);
+  }
+}
+
+.logSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 21px;
+  cursor: pointer;
+  list-style: none;
+
+  &::-webkit-details-marker {
+    display: none;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--dsw-alias-button-primary-fill);
+    outline-offset: -2px;
+    border-radius: 12px;
+  }
+}
+
+.logLine {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.logKind {
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.logResult {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 0 8px;
+  border-radius: 100px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary, var(--dsw-alias-label-primary));
+  background-color: var(--dsw-alias-interactive-bg-hover);
+}
+
+.saved {
+  color: var(--dsw-alias-brand-text);
+}
+
+.failed {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.logMeta {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.logDetail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px 10px;
+}
+
+.logText {
+  font-size: 13px;
+  line-height: 21px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 @media not all and (min-width: 768px) {
   .actions {
     flex-direction: column;

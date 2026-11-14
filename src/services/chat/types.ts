@@ -71,6 +71,16 @@ export type ReplyBlock = ThinkingPart | TextPart | ServerToolBlock
  */
 export type ReplyStatus = 'pending' | 'streaming' | 'done' | 'stopped' | 'error'
 
+/** 回答参考的一段过往对话 */
+export type MemoryChat = {
+  /** 对应的会话，用于「不再参考这段对话」；较早保存的回答没有 */
+  sessionId?: string
+  title: string
+  updatedAt: number
+  /** 用户原话节选；摘要生成于记录原话之前的旧数据为空字符串 */
+  excerpt: string
+}
+
 export type AssistantMessage = MessageBranch & {
   id: string
   role: 'assistant'
@@ -83,6 +93,21 @@ export type AssistantMessage = MessageBranch & {
   search?: boolean
   /** 本轮请求的系统信息快照；各回答版本独立保存，续写沿用。历史消息中缺省的快照保持为空。 */
   latestReminder?: string
+  /**
+   * 最近一次请求追加在 system 末尾的记忆块原文（`<memory>…</memory>`），用于追溯这条回答参考了哪些记忆。
+   * 记忆关闭或没有内容时缺省；只保存在本地，不进入导出归档。
+   */
+  memory?: string
+  /**
+   * 记忆块里「近期对话」各条对应的用户原话节选，顺序与记忆块一致。
+   * 模型看到的是摘要；来源面板展示用户自己说过的话，所以另存一份。旧消息没有这个字段。
+   */
+  memoryChats?: MemoryChat[]
+  /**
+   * 模型在回答末尾报出的、这次实际用到的记忆编号（记忆块里的 m1、m2…），来源面板只展示这些。
+   * 空数组表示明确没用到；缺省表示没有收到报告（旧消息、回答被中断或模型没照做）。
+   */
+  memoryUsed?: string[]
   /** 是否允许作为续写前缀；仍需满足回复状态与内容限制。 */
   prefix: boolean
   status: ReplyStatus

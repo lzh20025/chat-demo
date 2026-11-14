@@ -1,12 +1,14 @@
 import clsx from 'clsx'
 import { useState } from 'react'
-import { useTranslate } from '../../i18n/index.js'
+import { useTranslate, type TranslationKey } from '../../i18n/index.js'
+import type { MemoryLogEntry } from '../../services/chat/db.js'
 import {
   clearMemory,
   forgetDigest,
   onMemoryToggled,
   organizeMemory,
   saveProfile,
+  unmuteItem,
   useMemory,
 } from '../../services/memory/store.js'
 import { formatTime } from '../../services/memory/text.js'
@@ -19,7 +21,7 @@ import memoryStyles from './MemorySetting.module.css'
 import styles from './Settings.module.css'
 
 /**
- * 设置 →「记忆」：开关、用户档案（查看、编辑、立即整理）、近期对话摘要（逐条删除）和清空。
+ * 设置 →「记忆」：开关、用户档案（查看、编辑、立即整理）、不再提及的清单、近期对话摘要（逐条删除）和清空。
  * 模型看到的记忆全部在这里，没有隐藏的部分。
  */
 export const MemorySetting = () => {
@@ -48,7 +50,9 @@ export const MemorySetting = () => {
         />
       </div>
       <ProfileCell canOrganize={enabled && hasApiKey} />
+      <MutedCell />
       <RecentCell />
+      <LogCell />
       <div className={clsx(styles.cell, styles.row)}>
         <div className={styles.text}>
           <div className={styles.label}>{t('memoryClear')}</div>
@@ -176,6 +180,48 @@ const ProfileCell = ({ canOrganize }: { canOrganize: boolean }) => {
   )
 }
 
+/** 「别再提这件事」攒下的清单；没有时不显示这一栏 */
+const MutedCell = () => {
+  const t = useTranslate()
+  const muted = useMemory((state) => state.profile?.muted)
+  if (!muted?.length) {
+    return null
+  }
+  const restore = async (text: string) => {
+    try {
+      await unmuteItem(text)
+    } catch {
+      showToast({ key: 'memorySaveFailed', type: 'error' })
+    }
+  }
+  return (
+    <div className={styles.cell}>
+      <div className={styles.text}>
+        <div className={styles.label}>{t('memoryMuted')}</div>
+        <div className={styles.description}>{t('memoryMutedDescription')}</div>
+      </div>
+      <ul className={memoryStyles.list}>
+        {muted.map((text) => (
+          <li key={text} className={memoryStyles.item}>
+            <div className={memoryStyles.itemText}>
+              <div className={memoryStyles.itemSummary}>{text}</div>
+            </div>
+            <Button
+              variant="outlined"
+              size="s"
+              className={memoryStyles.itemButton}
+              aria-label={`${t('memoryMutedRestore')}: ${text}`}
+              onClick={() => void restore(text)}
+            >
+              {t('memoryMutedRestore')}
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 const RecentCell = () => {
   const t = useTranslate()
   const digests = useMemory((state) => state.digests)
@@ -232,6 +278,102 @@ const RecentCell = () => {
         </div>
       )}
     </div>
+  )
+}
+
+const TRIGGER_LABELS: Record<MemoryLogEntry['trigger'], TranslationKey> = {
+  delay: 'memoryLogTriggerDelay',
+  leave: 'memoryLogTriggerLeave',
+  catchUp: 'memoryLogTriggerCatchUp',
+  manual: 'memoryLogTriggerManual',
+  first: 'memoryLogTriggerFirst',
+  batch: 'memoryLogTriggerBatch',
+  interval: 'memoryLogTriggerInterval',
+}
+
+const RESULT_LABELS: Record<MemoryLogEntry['result'], TranslationKey> = {
+  saved: 'memoryLogResultSaved',
+  skipped: 'memoryLogResultSkipped',
+  discarded: 'memoryLogResultDiscarded',
+  failed: 'memoryLogResultFailed',
+}
+
+/** 活动记录：每次摘要生成和档案整理的触发原因、结果和产出，用于追溯记忆从哪里来 */
+const LogCell = () => {
+  const t = useTranslate()
+  const log = useMemory((state) => state.log)
+  return (
+    <div className={styles.cell}>
+      <div className={styles.text}>
+        <div className={styles.label}>{t('memoryLog')}</div>
+        <div className={styles.description}>{t('memoryLogDescription')}</div>
+      </div>
+      {log.length ? (
+        <ul className={clsx(memoryStyles.list, memoryStyles.log)}>
+          {log.map((entry) => (
+            <LogItem key={entry.id} entry={entry} />
+          ))}
+        </ul>
+      ) : (
+        <div className={clsx(memoryStyles.profile, memoryStyles.empty)}>{t('memoryLogEmpty')}</div>
+      )}
+    </div>
+  )
+}
+
+const LogItem = ({ entry }: { entry: MemoryLogEntry }) => {
+  const t = useTranslate()
+  const kind = t(entry.kind === 'digest' ? 'memoryLogDigest' : 'memoryLogProfile')
+  const subject = entry.kind === 'digest' ? entry.title || t('memoryUntitled') : kind
+  const note =
+    entry.result === 'skipped'
+      ? t('memoryLogSkippedDetail')
+      : entry.reason === 'edited'
+        ? t('memoryLogEditedDetail')
+        : entry.reason === 'emptyOutput'
+          ? t('memoryLogEmptyOutputDetail')
+          : null
+  return (
+    <li className={memoryStyles.logItem}>
+      <details>
+        <summary className={memoryStyles.logSummary}>
+          <span className={memoryStyles.logLine}>
+            <span className={memoryStyles.itemTime}>{formatTime(entry.at)}</span>
+            <span className={memoryStyles.logKind}>{kind}</span>
+            {entry.kind === 'digest' ? (
+              <span className={memoryStyles.itemName}>{subject}</span>
+            ) : null}
+            <span className={clsx(memoryStyles.logResult, memoryStyles[entry.result])}>
+              {t(RESULT_LABELS[entry.result])}
+            </span>
+          </span>
+          <span className={memoryStyles.logMeta}>
+            {t(TRIGGER_LABELS[entry.trigger])} ·{' '}
+            {t('memoryLogDuration', { seconds: (entry.durationMs / 1000).toFixed(1) })}
+          </span>
+        </summary>
+        <div className={memoryStyles.logDetail}>
+          {entry.sources?.length ? (
+            <div className={memoryStyles.logMeta}>
+              {t('memoryLogSources', {
+                titles: entry.sources.map((title) => title || t('memoryUntitled')).join(' / '),
+              })}
+            </div>
+          ) : null}
+          {note ? <div className={memoryStyles.logMeta}>{note}</div> : null}
+          {entry.detail ? (
+            <div
+              className={clsx(
+                memoryStyles.logText,
+                entry.result === 'failed' && memoryStyles.failed
+              )}
+            >
+              {entry.detail}
+            </div>
+          ) : null}
+        </div>
+      </details>
+    </li>
   )
 }
 
