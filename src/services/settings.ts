@@ -17,6 +17,8 @@ type Settings = {
   thinking: boolean
   search: boolean
   siderCollapsed: boolean
+  /** 记忆开关；关闭后不注入、不生成，已保存的记忆保留 */
+  memoryEnabled: boolean
 }
 
 const KEYS = {
@@ -28,6 +30,7 @@ const KEYS = {
   thinking: 'chat-demo:thinking',
   search: 'chat-demo:search',
   siderCollapsed: 'chat-demo:sider-collapsed',
+  memoryEnabled: 'chat-demo:memory-enabled',
 } as const
 
 const read = (key: string) => {
@@ -96,6 +99,8 @@ export const useSettings = create<Settings>(() => ({
   thinking: read(KEYS.thinking) === 'true',
   search: read(KEYS.search) === 'true',
   siderCollapsed: read(KEYS.siderCollapsed) === 'true',
+  // 默认开启；只有明确关闭过才为 false
+  memoryEnabled: read(KEYS.memoryEnabled) !== 'false',
 }))
 
 export const setLocale = (locale: Locale) => {
@@ -137,4 +142,9 @@ export const setSearch = (search: boolean) => {
 export const setSiderCollapsed = (siderCollapsed: boolean) => {
   write(KEYS.siderCollapsed, String(siderCollapsed))
   useSettings.setState({ siderCollapsed })
+}
+
+export const setMemoryEnabled = (memoryEnabled: boolean) => {
+  write(KEYS.memoryEnabled, String(memoryEnabled))
+  useSettings.setState({ memoryEnabled })
 }

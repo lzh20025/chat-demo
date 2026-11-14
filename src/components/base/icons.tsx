@@ -523,3 +523,16 @@ export const IconToastError16 = () => (
     />
   </svg>
 )
+
+/** 记忆：书签形，线条粗细与其他 16px 描边图标一致 */
+export const IconMemoryOutline16 = () => (
+  <svg width={16} height={16} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M4.6 1.65h6.8c.69 0 1.25.56 1.25 1.25v10.9c0 .5-.57.79-.97.49L8 11.5l-3.68 2.79c-.4.3-.97.01-.97-.49V2.9c0-.69.56-1.25 1.25-1.25Z"
+      stroke="currentColor"
+      strokeWidth={1.3}
+      strokeLinejoin="round"
+    />
+    <path d="M6 5.2h4M6 7.6h2.6" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" />
+  </svg>
+)

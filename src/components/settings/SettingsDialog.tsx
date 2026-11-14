@@ -6,6 +6,7 @@ import {
   IconDownloadOutline16,
   IconFollowsystemOutline16,
   IconLightOutline16,
+  IconMemoryOutline16,
   IconSettingsOutline16,
   IconUploadOutline14,
 } from '../base/icons.js'
@@ -32,12 +33,13 @@ import { Button } from '../base/Button.js'
 import { Modal } from '../base/Modal.js'
 import { Select } from '../base/Select.js'
 import { showToast } from '../base/toastState.js'
+import { MemorySetting } from './MemorySetting.js'
 import { ApiKeyConfirm, ApiKeyField, useApiKeyEditor } from './ApiKeyField.js'
 import { closeSettings, useSettingsDialog, type SettingsSection } from './settingsDialogState.js'
 import styles from './Settings.module.css'
 
 /**
- * 设置弹窗：分「通用设置」（主题、语言、朗读音色、位置）与「数据管理」（API Key、导入、导出、删除）。
+ * 设置弹窗：分「通用设置」（主题、语言、朗读音色、位置）、「记忆」（档案与近期对话摘要）与「数据管理」（API Key、导入、导出、删除）。
  * 桌面端为居中弹窗、左侧导航；移动端为底部弹层、导航横排在内容上方
  */
 export const SettingsDialog = () => {
@@ -51,6 +53,7 @@ const sections: { value: SettingsSection; label: TranslationKey; icon: ReactNode
     label: 'settingDialogAsideGeneralOptionLabel',
     icon: <IconSettingsOutline16 />,
   },
+  { value: 'memory', label: 'settingDialogAsideMemoryOptionLabel', icon: <IconMemoryOutline16 /> },
   { value: 'data', label: 'settingDialogAsideDataOptionLabel', icon: <IconDataOutline16 /> },
 ]
 
@@ -101,6 +104,8 @@ const SettingsContent = () => {
               <TtsVoiceSetting />
               <LocationSetting />
             </>
+          ) : section === 'memory' ? (
+            <MemorySetting />
           ) : (
             <>
               <ApiKeyField editor={apiKeyEditor} />

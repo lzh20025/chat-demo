@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useTranslate } from '../i18n/index.js'
 import { useSettings } from '../services/settings.js'
 import { useIsMobile, useMobileViewport, usePreventPageScroll } from './viewport.js'
+import { initMemory } from '../services/memory/store.js'
 import {
   bindChatPersistence,
   initChat,
@@ -69,6 +70,7 @@ export const App = () => {
 
   useEffect(() => {
     void initChat()
+    void initMemory()
     // 首次打开先在设置里输入 API Key
     ensureApiKey()
   }, [])

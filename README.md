@@ -34,6 +34,7 @@ The output is written to `dist/`. Deploy it to a static web server or open `dist
 - Upload, paste, or drag and drop attachments; use voice input and read replies aloud. A live audio spectrum appears in the first row of the input area while recording on mobile.
 - Markdown, syntax highlighting, KaTeX math, and Mermaid diagrams.
 - Simplified Chinese and English, light and dark themes, mobile layouts, location settings, and chat history import and export.
+- Memory: summaries of recent chats and a user profile are organized automatically and used when a new chat starts. You can view, edit, delete, or turn it off in Settings. See [Memory](src/services/memory/README.md) (in Chinese).
 
 ## Data and storage
 

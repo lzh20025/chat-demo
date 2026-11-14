@@ -4,6 +4,13 @@ import { ApiError, streamMessage } from '../api/client.js'
 import type { ChatModel, CreateMessageRequest } from '../api/types.js'
 import { extractFileIds, getFileErrorCode, isRetryableApiError } from '../api/errors.js'
 import { cancelUpload, describeUploadError, uploadAttachment, useUploads } from '../attachments.js'
+import {
+  flushDigests,
+  noteReplyDone,
+  onHistoryReplaced,
+  onSessionRemoved,
+  withMemory,
+} from '../memory/store.js'
 import { useSettings } from '../settings.js'
 import { appendBranch, getVisibleMessages, normalizeSession, selectVersion } from './branches.js'
 import * as db from './db.js'
@@ -417,6 +424,7 @@ export const replaceHistory = async (write: () => Promise<void>): Promise<number
     unsavedSessions.clear()
     pendingFiles.clear()
     clearAllDrafts()
+    onHistoryReplaced()
     set({
       ready: true,
       initError: false,
@@ -442,6 +450,8 @@ export const replaceHistory = async (write: () => Promise<void>): Promise<number
 
 export const newChat = () => {
   if (!get().importingHistory) {
+    // 开始新对话前先把刚才的对话整理成摘要，不等延时
+    flushDigests()
     set({ activeId: null })
     trimSessionCache()
   }
@@ -450,6 +460,7 @@ export const newChat = () => {
 export const selectSession = (id: string) => {
   if (!get().importingHistory && get().sessions.some((session) => session.id === id)) {
     touchSession(id)
+    flushDigests()
     set({ activeId: id })
     void ensureSessionLoaded(id)
     trimSessionCache()
@@ -509,6 +520,7 @@ const removeSessionData = async (id: string): Promise<boolean> => {
     unsavedSessions.delete(id)
     pendingFiles.delete(id)
     clearDraft(id)
+    onSessionRemoved(id)
     set((state) => ({
       sessions: state.sessions.filter((session) => session.id !== id),
       sessionCache: Object.fromEntries(
@@ -1000,7 +1012,8 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
           useSettings.getState().apiKey ?? '',
           {
             model: initial.model ?? MODEL,
-            system: SYSTEM_PROMPT,
+            // 记忆块追加在身份说明之后；同一会话沿用首次请求时的快照
+            system: withMemory(SYSTEM_PROMPT, sessionId),
             messages,
             thinking: { type: initial.thinking ? 'enabled' : 'disabled' },
             safety_check: SAFETY_CHECK,
@@ -1090,5 +1103,10 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
       ),
     }))
     persist(sessionId)
+    // 回答正常完成后更新记忆；停止、出错或正在替换历史时不处理
+    const settled = getSession(sessionId)
+    if (reply.status === 'done' && settled && !get().importingHistory) {
+      noteReplyDone(settled)
+    }
   }
 }

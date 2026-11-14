@@ -2,12 +2,35 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import { toSessionSummary, type Session, type SessionSummary } from './types.js'
 
 /** IndexedDB 存储结构版本；新增或调整存储、索引时递增。 */
-const DB_VERSION = 11
+const DB_VERSION = 12
 
 /** 文件原件按附件的本地 id 存储，所有引用同一 id 的消息共用一份；用于缩略图、打开查看，以及没有 serverId 时补传。 */
 export type StoredFile = {
   id: string
   blob: Blob
+}
+
+/** 记忆：单个会话的近期摘要，键为会话 id；新会话开始时按时间倒序注入 system。 */
+export type MemoryDigest = {
+  sessionId: string
+  title: string
+  summary: string
+  /** 被摘要内容的最后活动时间，用于排序与展示 */
+  updatedAt: number
+  /** 摘要生成时间；晚于档案的 dreamedAt 表示尚未并入档案 */
+  digestedAt: number
+  /** 生成摘要时可见分支上的消息数，用于判断会话是否有新内容 */
+  messageCount: number
+}
+
+/** 记忆：长期用户档案，全局只有一条（id 固定为 profile）。 */
+export type MemoryProfile = {
+  id: 'profile'
+  content: string
+  /** 内容最后变更时间（自动整理或手动编辑） */
+  updatedAt: number
+  /** 最近一次自动整理的时间；0 表示从未整理 */
+  dreamedAt: number
 }
 
 /** 文件引用留在摘要中，删除会话时通过索引判断原件是否仍被引用。 */
@@ -29,6 +52,8 @@ interface ChatDB extends DBSchema {
    */
   sessionsStaging: { key: string; value: Session }
   filesStaging: { key: string; value: StoredFile }
+  memoryDigests: { key: string; value: MemoryDigest }
+  memoryProfile: { key: string; value: MemoryProfile }
 }
 
 let dbPromise: Promise<IDBPDatabase<ChatDB>> | null = null
@@ -61,6 +86,12 @@ const getDB = () =>
         if (!db.objectStoreNames.contains(name)) {
           db.createObjectStore(name, { keyPath: 'id' })
         }
+      }
+      if (!db.objectStoreNames.contains('memoryDigests')) {
+        db.createObjectStore('memoryDigests', { keyPath: 'sessionId' })
+      }
+      if (!db.objectStoreNames.contains('memoryProfile')) {
+        db.createObjectStore('memoryProfile', { keyPath: 'id' })
       }
       const summaries = db.objectStoreNames.contains('sessionSummaries')
         ? tx.objectStore('sessionSummaries')
@@ -125,13 +156,18 @@ export const renameSession = async (id: string, title: string): Promise<void> =>
 
 /** 删除会话，仅清理已无会话引用的本地原件；远端文件不删。 */
 export const deleteSession = async (sessionId: string): Promise<void> => {
-  const tx = (await getDB()).transaction(['sessions', 'sessionSummaries', 'files'], 'readwrite')
+  const tx = (await getDB()).transaction(
+    ['sessions', 'sessionSummaries', 'files', 'memoryDigests'],
+    'readwrite'
+  )
   await Promise.all([
     (async () => {
       try {
         const summaries = tx.objectStore('sessionSummaries')
         const summary = await summaries.get(sessionId)
         await tx.objectStore('sessions').delete(sessionId)
+        // 删除对话时同时删除它的近期摘要；已并入用户档案的内容由用户在记忆设置中管理。
+        await tx.objectStore('memoryDigests').delete(sessionId)
         await summaries.delete(sessionId)
         for (const id of summary?.fileIds ?? []) {
           if ((await summaries.index('fileIds').count(id)) === 0) {
@@ -210,7 +246,7 @@ export const updateStagingFileTypes = async (types: ReadonlyMap<string, string>)
 export const commitStaging = async (): Promise<SessionSummary[]> => {
   const summaries: SessionSummary[] = []
   const tx = (await getDB()).transaction(
-    ['sessions', 'sessionSummaries', 'files', 'sessionsStaging', 'filesStaging'],
+    ['sessions', 'sessionSummaries', 'files', 'sessionsStaging', 'filesStaging', 'memoryDigests'],
     'readwrite'
   )
   const move = async (from: 'sessionsStaging' | 'filesStaging', to: 'sessions' | 'files') => {
@@ -219,6 +255,8 @@ export const commitStaging = async (): Promise<SessionSummary[]> => {
       await target.clear()
       if (to === 'sessions') {
         await tx.objectStore('sessionSummaries').clear()
+        // 会话整体被替换，旧会话的近期摘要随之失效。
+        await tx.objectStore('memoryDigests').clear()
       }
       for (
         let cursor = await tx.objectStore(from).openCursor();
@@ -242,6 +280,34 @@ export const commitStaging = async (): Promise<SessionSummary[]> => {
   await Promise.all([move('sessionsStaging', 'sessions'), move('filesStaging', 'files'), tx.done])
   // 直接返回本次提交的列表，调用方无需在替换成功后再发起可能失败的读取。
   return summaries
+}
+
+export const loadMemoryDigests = async (): Promise<MemoryDigest[]> =>
+  (await getDB()).getAll('memoryDigests')
+
+export const saveMemoryDigest = async (digest: MemoryDigest): Promise<void> => {
+  await (await getDB()).put('memoryDigests', digest)
+}
+
+export const deleteMemoryDigest = async (sessionId: string): Promise<void> => {
+  await (await getDB()).delete('memoryDigests', sessionId)
+}
+
+export const loadMemoryProfile = async (): Promise<MemoryProfile | undefined> =>
+  (await getDB()).get('memoryProfile', 'profile')
+
+export const saveMemoryProfile = async (profile: MemoryProfile): Promise<void> => {
+  await (await getDB()).put('memoryProfile', profile)
+}
+
+/** 清空全部记忆：近期摘要与用户档案；会话本身不受影响。 */
+export const clearMemory = async (): Promise<void> => {
+  const tx = (await getDB()).transaction(['memoryDigests', 'memoryProfile'], 'readwrite')
+  await Promise.all([
+    tx.objectStore('memoryDigests').clear(),
+    tx.objectStore('memoryProfile').clear(),
+    tx.done,
+  ])
 }
 
 /** 本地存储失败不打断对话，只在控制台留痕 */
