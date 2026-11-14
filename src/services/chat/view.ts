@@ -1,3 +1,4 @@
+import { hideMemoryMarker } from '../memory/marker.js'
 import { translate } from '../../i18n/index.js'
 import type {
   ServerToolKind,
@@ -173,7 +174,16 @@ const joinTextBlocks = (
   return { markdown, text }
 }
 
-export const buildReplyView = (reply: AssistantMessage, streaming: boolean): ReplyView => {
+export const buildReplyView = (message: AssistantMessage, streaming: boolean): ReplyView => {
+  // 回答结束时记忆归因标记会从正文剥离；流式期间它还在文本里，先隐藏
+  const reply = streaming
+    ? {
+        ...message,
+        blocks: message.blocks.map((block) =>
+          block.type === 'text' ? { ...block, text: hideMemoryMarker(block.text) } : block
+        ),
+      }
+    : message
   const results = new Map<string, WebSearchToolResultBlock | WebFetchToolResultBlock>()
   for (const block of reply.blocks) {
     if (block.type === 'web_search_tool_result' || block.type === 'web_fetch_tool_result') {

@@ -1,3 +1,4 @@
+import { extractMemoryUsed } from '../memory/marker.js'
 import type {
   AssistantBlockParam,
   FileBlockParam,
@@ -145,19 +146,27 @@ export const settleReply = (
   status: Extract<ReplyStatus, 'done' | 'stopped' | 'error'>,
   now: number,
   error?: AssistantMessage['error']
-): AssistantMessage => ({
-  ...reply,
-  status,
-  error,
-  blocks: reply.blocks.flatMap((block): ReplyBlock[] => {
+): AssistantMessage => {
+  // 记忆归因标记不属于回答：从正文剥离，编号另存
+  let memoryUsed = reply.memoryUsed
+  const blocks = reply.blocks.flatMap((block): ReplyBlock[] => {
     if (reply.stopReason === 'refusal' && (block.type === 'thinking' || block.type === 'text')) {
       return []
+    }
+    if (block.type === 'text' && !block.isTemplate) {
+      const { text, used } = extractMemoryUsed(block.text)
+      if (used === null) {
+        return [block]
+      }
+      memoryUsed = used
+      return [{ ...block, text: text.trimEnd() }]
     }
     return block.type === 'thinking' && block.startedAt !== undefined && block.endedAt === undefined
       ? [{ ...block, endedAt: now }]
       : [block]
-  }),
-})
+  })
+  return { ...reply, status, error, blocks, memoryUsed }
+}
 
 /** 回复里所有文本块拼起来，用于复制与判断是否有回答 */
 export const getReplyText = (reply: AssistantMessage) =>
@@ -185,8 +194,7 @@ export const canContinueReply = (reply: AssistantMessage): boolean => {
     return false
   }
   return (
-    reply.status === 'stopped' ||
-    (reply.status === 'done' && reply.stopReason === 'max_tokens')
+    reply.status === 'stopped' || (reply.status === 'done' && reply.stopReason === 'max_tokens')
   )
 }
 

@@ -5,11 +5,12 @@ import type { ChatModel, CreateMessageRequest } from '../api/types.js'
 import { extractFileIds, getFileErrorCode, isRetryableApiError } from '../api/errors.js'
 import { cancelUpload, describeUploadError, uploadAttachment, useUploads } from '../attachments.js'
 import {
+  appendMemory,
   flushDigests,
+  getMemorySnapshot,
   noteReplyDone,
   onHistoryReplaced,
   onSessionRemoved,
-  withMemory,
 } from '../memory/store.js'
 import { useSettings } from '../settings.js'
 import { appendBranch, getVisibleMessages, normalizeSession, selectVersion } from './branches.js'
@@ -998,7 +999,14 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
         const latestReminder = prepared.prefix
           ? prepared.prefix.latestReminder
           : createLatestReminder(useSettings.getState())
-        reply = { ...reply, latestReminder }
+        // 记忆块随回答保存，界面可展示这条回答实际参考的记忆
+        const { block: memory, chats } = getMemorySnapshot(sessionId)
+        reply = {
+          ...reply,
+          latestReminder,
+          memory: memory || undefined,
+          memoryChats: chats.length ? chats : undefined,
+        }
         updateReply(sessionId, reply)
         persist(sessionId)
         const messages = toRequestMessages(
@@ -1013,7 +1021,7 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
           {
             model: initial.model ?? MODEL,
             // 记忆块追加在身份说明之后；同一会话沿用首次请求时的快照
-            system: withMemory(SYSTEM_PROMPT, sessionId),
+            system: appendMemory(SYSTEM_PROMPT, memory),
             messages,
             thinking: { type: initial.thinking ? 'enabled' : 'disabled' },
             safety_check: SAFETY_CHECK,

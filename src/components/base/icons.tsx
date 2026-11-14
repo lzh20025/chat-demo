@@ -536,3 +536,24 @@ export const IconMemoryOutline16 = () => (
     <path d="M6 5.2h4M6 7.6h2.6" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" />
   </svg>
 )
+
+/** 过往对话：圆角气泡，线条粗细与其他 16px 描边图标一致 */
+export const IconChatOutline16 = () => (
+  <svg width={16} height={16} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M8 2.15c3.4 0 6.1 2.4 6.1 5.45s-2.7 5.45-6.1 5.45c-.7 0-1.37-.1-2-.29l-2.62 1c-.38.14-.76-.2-.65-.6l.6-2.2A5.1 5.1 0 0 1 1.9 7.6c0-3.05 2.7-5.45 6.1-5.45Z"
+      stroke="currentColor"
+      strokeWidth={1.3}
+      strokeLinejoin="round"
+    />
+  </svg>
+)
+
+/** 说明：圆圈里一个 i，线条粗细与其他 16px 描边图标一致 */
+export const IconInfoOutline16 = () => (
+  <svg width={16} height={16} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx={8} cy={8} r={6.1} stroke="currentColor" strokeWidth={1.3} />
+    <path d="M8 7.3v3.6" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" />
+    <circle cx={8} cy={5.1} r={0.8} fill="currentColor" />
+  </svg>
+)
