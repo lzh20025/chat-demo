@@ -414,6 +414,7 @@ const maybeDream = async (force: boolean): Promise<boolean> => {
         updatedAt: now,
         dreamedAt: now,
         muted: latest?.muted,
+        unscrubbed: latest?.unscrubbed,
       }
       await db.saveMemoryProfile(next)
       set({ profile: next, failed: false })
@@ -509,6 +510,8 @@ const catchUp = () =>
     if (!apiKey()) {
       return
     }
+    // 上次没能清理完的「不再提及」（当时记忆关闭、没有 API Key 或请求失败）
+    await scrubDigests().catch(report('scrub memory digests'))
     await backfill(CATCH_UP_LIMIT, 'catchUp')
     await maybeDream(false)
   }).catch(report('memory catch-up'))
@@ -536,6 +539,7 @@ export const saveProfile = async (content: string): Promise<void> => {
     updatedAt: Date.now(),
     dreamedAt: get().profile?.dreamedAt ?? 0,
     muted: get().profile?.muted,
+    unscrubbed: get().profile?.unscrubbed,
   }
   await db.saveMemoryProfile(profile)
   set({ profile })
@@ -567,7 +571,9 @@ export const correctProfileItem = async (original: string, corrected: string): P
   return true
 }
 
-const saveMuted = async (content: string, muted: string[]) => {
+type Unscrubbed = NonNullable<MemoryProfile['unscrubbed']>
+
+const saveMuted = async (content: string, muted: string[], unscrubbed: Unscrubbed) => {
   const current = get().profile
   const profile: MemoryProfile = {
     id: 'profile',
@@ -576,6 +582,7 @@ const saveMuted = async (content: string, muted: string[]) => {
     updatedAt: Date.now(),
     dreamedAt: current?.dreamedAt ?? 0,
     muted: muted.length ? muted : undefined,
+    unscrubbed: unscrubbed.length ? unscrubbed : undefined,
   }
   await db.saveMemoryProfile(profile)
   set({ profile })
@@ -586,36 +593,67 @@ const saveMuted = async (content: string, muted: string[]) => {
 /**
  * 「别再提这件事」：从档案里删掉这一条，并记入不再提及的清单。
  * 只删档案不够：近期对话的摘要里还有这件事，会原样注入，下次整理也会重新归纳出来。
- * 所以清单会交给之后的摘要和整理，已有摘要里的相关内容在后台用一次模型调用删掉。
+ * 所以清单会交给之后的摘要和整理，已有摘要里的相关内容用一次模型调用删掉；
+ * 清理完成之前（包括记忆关闭、没有 API Key、请求失败），旧摘要不注入，之后启动或重新开启时重试。
  */
 export const muteProfileItem = async (text: string): Promise<void> => {
   const { lines, index } = findProfileLine(text)
   if (index !== -1) {
     lines.splice(index, 1)
   }
-  const muted = get().profile?.muted ?? []
-  await saveMuted(lines.join('\n').trim(), muted.includes(text) ? muted : [...muted, text])
-  void scrubDigests(text).catch(report('scrub memory digests'))
+  const current = get().profile
+  const muted = current?.muted ?? []
+  await saveMuted(lines.join('\n').trim(), muted.includes(text) ? muted : [...muted, text], [
+    ...(current?.unscrubbed ?? []).filter((item) => item.text !== text),
+    { text, at: Date.now() },
+  ])
+  void enqueue(scrubDigests).catch(report('scrub memory digests'))
 }
 
-/** 把已有摘要里与某件事相关的内容删掉；没有 API Key 或请求失败时摘要保持原样 */
-const scrubDigests = (text: string) =>
-  enqueue(async () => {
-    const key = apiKey()
-    const targets = get().digests.filter((digest) => digest.summary)
-    if (!enabled() || !key || !targets.length) {
-      return
+/** 清理完成后把条目移出待清理列表；不动 updatedAt，这不是用户对档案的编辑 */
+const markScrubbed = async (text: string) => {
+  const current = get().profile
+  if (!current) {
+    return
+  }
+  const unscrubbed = (current.unscrubbed ?? []).filter((item) => item.text !== text)
+  const profile: MemoryProfile = {
+    ...current,
+    unscrubbed: unscrubbed.length ? unscrubbed : undefined,
+  }
+  await db.saveMemoryProfile(profile)
+  set({ profile })
+  invalidateSnapshots()
+  broadcast()
+}
+
+/**
+ * 逐条处理还没清理的「不再提及」：把已有摘要里的相关内容删掉。
+ * 记忆关闭或没有 API Key 时什么都不做，条目留在待清理列表里；请求失败同样保留，下次再试。
+ * 需在串行队列里调用。
+ */
+const scrubDigests = async () => {
+  const key = apiKey()
+  if (!enabled() || !key) {
+    return
+  }
+  const startEpoch = epoch
+  const prompts = getPrompts(useSettings.getState().locale)
+  const flat = (summary: string) => summary.replace(/\s+/g, ' ').trim()
+  for (const item of get().profile?.unscrubbed ?? []) {
+    // 这之后生成的摘要已经避开了这件事，不用再处理
+    const targets = get().digests.filter((digest) => digest.summary && digest.digestedAt < item.at)
+    if (!targets.length) {
+      await markScrubbed(item.text)
+      continue
     }
-    const startEpoch = epoch
-    const prompts = getPrompts(useSettings.getState().locale)
-    const flat = (summary: string) => summary.replace(/\s+/g, ' ').trim()
     setActivity('digesting')
     try {
       const output = await complete({
         apiKey: key,
         system: prompts.scrubSystem,
         user: [
-          `${prompts.scrubTarget}:\n${text}`,
+          `${prompts.scrubTarget}:\n${item.text}`,
           `${prompts.scrubNotes}:\n${targets
             .map((digest, index) => `[${index + 1}] ${flat(digest.summary)}`)
             .join('\n')}`,
@@ -637,27 +675,25 @@ const scrubDigests = (text: string) =>
           changed.push({ ...target, summary, excerpt: summary ? target.excerpt : '' })
         }
       }
-      if (!changed.length) {
-        return
-      }
       await Promise.all(changed.map((digest) => db.saveMemoryDigest(digest)))
       const bySession = new Map(changed.map((digest) => [digest.sessionId, digest]))
       set((state) => ({
         digests: state.digests.map((digest) => bySession.get(digest.sessionId) ?? digest),
       }))
-      invalidateSnapshots()
-      broadcast()
+      await markScrubbed(item.text)
     } finally {
       setActivity('idle')
     }
-  })
+  }
+}
 
 /** 从不再提及的清单里移除一条；不会自动写回档案，之后的整理可以重新记录 */
 export const unmuteItem = async (text: string): Promise<void> => {
   const current = get().profile
   await saveMuted(
     current?.content ?? '',
-    (current?.muted ?? []).filter((item) => item !== text)
+    (current?.muted ?? []).filter((item) => item !== text),
+    (current?.unscrubbed ?? []).filter((item) => item.text !== text)
   )
 }
 

@@ -41,6 +41,11 @@ export type MemoryProfile = {
   dreamedAt: number
   /** 用户要求不再提及的事：整理档案时不得写入，回答时不主动提起 */
   muted?: string[]
+  /**
+   * 已加入 muted、但已有摘要还没清理完的条目（记忆关闭、没有 API Key 或请求失败时会留下）。
+   * at 是加入时间：在它之前生成的摘要可能还带着这件事，清理完成前不注入。
+   */
+  unscrubbed?: { text: string; at: number }[]
 }
 
 /**

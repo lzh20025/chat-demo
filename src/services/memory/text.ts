@@ -128,11 +128,13 @@ type RecentEntry = {
  * excerpt 是用户原话，不进入记忆块，只供界面展示。
  */
 const selectRecent = ({
+  profile,
   digests,
   pending,
   currentSessionId,
   locale,
 }: {
+  profile: MemoryProfile | null
   digests: MemoryDigest[]
   pending: PendingExcerpt[]
   currentSessionId: string | null
@@ -140,8 +142,10 @@ const selectRecent = ({
 }): RecentEntry[] => {
   const prompts = getPrompts(locale)
   const entries = new Map<string, RecentEntry>()
+  // 「不再提及」的清理还没跑完时，在那之前生成的摘要可能还带着这件事，先不注入
+  const heldBefore = Math.max(0, ...(profile?.unscrubbed ?? []).map((item) => item.at))
   for (const digest of digests) {
-    if (digest.summary) {
+    if (digest.summary && digest.digestedAt >= heldBefore) {
       entries.set(digest.sessionId, {
         sessionId: digest.sessionId,
         title: digest.title,
@@ -151,7 +155,9 @@ const selectRecent = ({
       })
     }
   }
-  for (const item of pending) {
+  // 原话节选是未经处理的用户原文，没法保证不含「不再提及」的事：
+  // 清单不为空时不注入原话，等摘要生成（生成时会避开清单里的事）
+  for (const item of profile?.muted?.length ? [] : pending) {
     // 待处理的会话有比摘要更新的内容：原话节选排在已有摘要之后一并给出
     if (!item.excerpt) {
       continue
@@ -190,7 +196,7 @@ export const renderMemoryBlock = ({
   locale: Locale
 }): { block: string; chats: MemoryChat[] } => {
   const prompts = getPrompts(locale)
-  const recent = selectRecent({ digests, pending, currentSessionId, locale })
+  const recent = selectRecent({ profile, digests, pending, currentSessionId, locale })
   const sections: string[] = []
   // 每条记忆一个编号，模型在回答末尾按编号报出实际用到的条目
   let count = 0
