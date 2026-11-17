@@ -5,6 +5,8 @@
  */
 
 export type ChatModel = 'deepseek-flash' | 'deepseek-v4-pro'
+/** 思考强度，取值与 GET /models 返回的 supported_levels 一致 */
+export type Effort = 'low' | 'high' | 'max'
 
 // ---------- 响应：内容块 ----------
 
@@ -177,6 +179,8 @@ export type CreateMessageRequest = {
   system: string
   messages: MessageParam[]
   thinking: { type: 'enabled' | 'disabled' }
+  /** 思考强度，仅思考模式生效；缺省为 high */
+  output_config?: { effort: Effort }
   tools: (DeepseekWebSearchTool | DeepseekReadUrlTool)[]
   safety_check: { level: 'high' }
   title?: { enabled: boolean }
