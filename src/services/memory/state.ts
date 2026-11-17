@@ -3,7 +3,7 @@ import * as db from '../chat/db.js'
 import type { MemoryDigest, MemoryLogEntry, MemoryPlan, MemoryProfile } from '../chat/db.js'
 import type { MemoryItem } from '../chat/types.js'
 import { createId } from '../../utils/id.js'
-import { useSettings } from '../settings.js'
+import { isNativeProvider, useSettings } from '../settings.js'
 import type { MemorySnapshot, PendingExcerpt } from './text.js'
 
 /**
@@ -50,7 +50,8 @@ export const setMemory = useMemory.setState
 export const report = db.reportStorageError
 
 export const memoryEnabled = () => useSettings.getState().memoryEnabled
-export const memoryApiKey = () => useSettings.getState().apiKey
+/** 整理走 DeepSeek；选择其他服务商时不向 DeepSeek 发送对话。 */
+export const memoryApiKey = () => (isNativeProvider() ? useSettings.getState().apiKey : null)
 
 /** 清空记忆或替换历史后递增；进行中的整理结果据此丢弃 */
 let epoch = 0

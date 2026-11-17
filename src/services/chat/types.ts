@@ -1,5 +1,6 @@
 import type { TranslationMessage } from '../../i18n/index.js'
 import type { ApiErrorKind } from '../api/client.js'
+import type { ExternalProviderId } from '../providers.js'
 import type {
   ChatModel,
   Effort,
@@ -135,6 +136,9 @@ export type AssistantMessage = MessageBranch & {
   createdAt: number
   /** 未记录模型时为 null，续写使用当前默认模型。 */
   model: ChatModel | null
+  /** 回答来自 DeepSeek 以外的服务商时记录；此时 model 为 null，实际模型见 providerModel */
+  provider?: ExternalProviderId
+  providerModel?: string
   /** 请求时是否开启深度思考 */
   thinking?: boolean
   /** 请求时的思考强度；未记录时不传，服务端按默认强度处理 */

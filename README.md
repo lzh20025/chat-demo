@@ -54,6 +54,8 @@ Settings → Data → Delete all chats clears all local conversations, original 
 | `pnpm lint`   | Lint with oxlint             |
 | `pnpm format` | Format with oxfmt            |
 
+Settings → Data lets you switch the provider to Anthropic, OpenAI, Gemini (through its OpenAI-compatible endpoint) or any OpenAI-compatible service, each with its own API key, base URL and model. These providers get plain chat with DeepThink and effort; web search, link reading, attachments, voice, titles and memory work only with DeepSeek.
+
 [rspack.config.ts](rspack.config.ts) uses `https://api.deepseek.com` by default. Use `createConfig({ apiOrigin, devServer })` to customize the API origin and development server proxy.
 
 Chat uses `deepseek-flash` by default through Anthropic-compatible Messages / Files APIs. Speech features use ASR / TTS endpoints. Requests include extensions for search, link reading, titles, and `latest_reminder`, so the configured service must support the corresponding capabilities. Supported attachment formats are determined by server-side validation.

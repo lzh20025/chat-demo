@@ -1,10 +1,16 @@
 import { useState } from 'react'
 import { ApiError, verifyApiKey } from '../../services/api/client.js'
 import { classifyApiError } from '../../services/api/errors.js'
-import { setApiKey } from '../../services/settings.js'
+import { fetchProviderModels } from '../../services/providerModels.js'
+import {
+  providerBaseUrl,
+  setApiKey,
+  setProviderSettings,
+  useSettings,
+} from '../../services/settings.js'
 import { useTranslate } from '../../i18n/index.js'
 
-/** 输入 API Key 后先用 GET /models 校验，通过才保存 */
+/** 输入 API Key 后先校验（DeepSeek 用 GET /models，其他服务商拉取模型列表），通过才保存到对应服务商 */
 export const useApiKeyForm = (onSaved?: () => void) => {
   const t = useTranslate()
   const [value, setValue] = useState('')
@@ -35,8 +41,18 @@ export const useApiKeyForm = (onSaved?: () => void) => {
     setVerifying(true)
     setFailure(null)
     try {
-      await verifyApiKey(apiKey)
-      setApiKey(apiKey)
+      const { provider } = useSettings.getState()
+      if (provider === 'deepseek') {
+        await verifyApiKey(apiKey)
+        setApiKey(apiKey)
+      } else {
+        if (!providerBaseUrl(provider)) {
+          throw new ApiError('protocol', { key: 'providerBaseUrlMissing' })
+        }
+        // 拉取模型列表同时校验 Key
+        await fetchProviderModels(provider, apiKey)
+        setProviderSettings(provider, { apiKey })
+      }
       setValue('')
       onSaved?.()
     } catch (e) {

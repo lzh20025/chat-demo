@@ -54,6 +54,8 @@ API Key 和设置保存在浏览器 localStorage，会话及附件原件保存�
 | `pnpm lint`   | oxlint 检查         |
 | `pnpm format` | oxfmt 格式化        |
 
+在「设置 → 数据管理」中可以把服务商切换为 Anthropic、OpenAI、Gemini（通过其 OpenAI 兼容接口）或任意 OpenAI 兼容服务，各自保存 API Key、接口地址和模型。这些服务商只提供基础对话（含深度思考与思考强度）；联网搜索、链接阅读、附件、语音、标题和记忆仅在使用 DeepSeek 时可用。
+
 [rspack.config.ts](rspack.config.ts) 默认连接 `https://api.deepseek.com`。`createConfig({ apiOrigin, devServer })` 支持自定义 API 地址和开发服务器代理。
 
 聊天默认使用 `deepseek-flash`，通过 Anthropic 兼容的 Messages / Files API 通信；语音使用 ASR / TTS 接口。请求使用搜索、链接阅读、标题和 `latest_reminder` 等扩展，接入服务需支持相应能力。附件实际支持的格式以服务端校验为准。
