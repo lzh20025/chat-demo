@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import type { MemoryChat } from '../../services/chat/types.js'
+import type { AssistantMessage } from '../../services/chat/types.js'
+import { INSTRUCTIONS_ID } from '../../services/instructions.js'
 import type { Source } from '../../services/chat/view.js'
 import {
   countMemoryItems,
@@ -8,27 +9,50 @@ import {
   type MemoryTrace,
 } from '../../services/memory/text.js'
 
-/** 一条回答用到的记忆；trace 为 null 表示记忆块解析不出条目，只能显示原文 */
-export type UsedMemory = { trace: MemoryTrace | null; raw: string }
+/**
+ * 一条回答用到的记忆和自定义指令。
+ * trace 为 null 而 raw 不为 null 表示记忆块解析不出条目，只能显示原文。
+ */
+export type UsedMemory = {
+  trace: MemoryTrace | null
+  raw: string | null
+  /** 这次回答受其影响的自定义指令原文 */
+  instructions: string | null
+}
+
+/** 用到的条数：解析不出条目的记忆块按一条算 */
+export const countUsedMemory = (memory: UsedMemory): number =>
+  (memory.trace ? countMemoryItems(memory.trace) : memory.raw ? 1 : 0) +
+  (memory.instructions ? 1 : 0)
 
 /**
- * 由回答上保存的记忆块、用户原话和模型报出的编号，得到这条回答实际用到的记忆。
- * 没有记忆，或一条都没用到时返回 null。
+ * 由回答上保存的记忆块、用户原话、自定义指令和模型报出的编号，得到这条回答实际用到的内容。
+ * 什么都没用到时返回 null。
  */
-export const resolveMemory = (
-  block: string | undefined,
-  chats: MemoryChat[] | undefined,
-  used: string[] | undefined
-): UsedMemory | null => {
-  if (!block) {
-    return null
+export const resolveMemory = ({
+  memory: block,
+  memoryChats: chats,
+  memoryUsed: used,
+  instructions,
+}: Pick<
+  AssistantMessage,
+  'memory' | 'memoryChats' | 'memoryUsed' | 'instructions'
+>): UsedMemory | null => {
+  const resolved: UsedMemory = {
+    trace: null,
+    raw: null,
+    instructions: instructions && used?.includes(INSTRUCTIONS_ID) ? instructions : null,
   }
-  const parsed = parseMemoryBlock(block, chats)
-  if (!parsed) {
-    return { trace: null, raw: block }
+  if (block) {
+    const parsed = parseMemoryBlock(block, chats)
+    if (!parsed) {
+      resolved.raw = block
+    } else {
+      const trace = pickUsedMemory(parsed, used)
+      resolved.trace = countMemoryItems(trace) ? trace : null
+    }
   }
-  const trace = pickUsedMemory(parsed, used)
-  return countMemoryItems(trace) ? { trace, raw: block } : null
+  return countUsedMemory(resolved) ? resolved : null
 }
 
 /**

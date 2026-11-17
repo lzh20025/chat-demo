@@ -3,15 +3,19 @@ import { useMemo } from 'react'
 import { useTranslate } from '../../i18n/index.js'
 import type { AssistantMessage } from '../../services/chat/types.js'
 import type { Source } from '../../services/chat/view.js'
-import { countMemoryItems } from '../../services/memory/text.js'
 import { IconButton } from '../base/IconButton.js'
 import { IconBrowseOutline16, IconMemoryOutline16 } from '../base/icons.js'
-import { resolveMemory, toggleReferencePanel, useSearchPanel } from '../search/searchPanelState.js'
+import {
+  countUsedMemory,
+  resolveMemory,
+  toggleReferencePanel,
+  useSearchPanel,
+} from '../search/searchPanelState.js'
 import styles from './ReferenceChip.module.css'
 
 /**
  * 回答操作栏末尾的来源按钮，和复制、朗读、重新生成同一种图标按钮：
- * 悬停提示这条回答搜索到的网页数和实际用到的记忆数，点击在右侧面板展开，再点一次收起。
+ * 悬停提示这条回答搜索到的网页数和实际用到的记忆数（自定义指令也算一条），点击在右侧面板展开，再点一次收起。
  * 两者都没有时不显示。
  */
 export const ReferenceChip = ({
@@ -27,11 +31,16 @@ export const ReferenceChip = ({
   const entry = `${message.id}-references`
   const active = useSearchPanel((state) => state.entry === entry)
   const memory = useMemo(
-    () => resolveMemory(message.memory, message.memoryChats, message.memoryUsed),
-    [message.memory, message.memoryChats, message.memoryUsed]
+    () =>
+      resolveMemory({
+        memory: message.memory,
+        memoryChats: message.memoryChats,
+        memoryUsed: message.memoryUsed,
+        instructions: message.instructions,
+      }),
+    [message.memory, message.memoryChats, message.memoryUsed, message.instructions]
   )
-  // 解析不出条目的记忆块按一条算，面板里显示原文
-  const memoryCount = memory ? (memory.trace ? countMemoryItems(memory.trace) : 1) : 0
+  const memoryCount = memory ? countUsedMemory(memory) : 0
   if (!sources.length && !memory) {
     return null
   }

@@ -170,6 +170,11 @@ export const zh = {
   settingsLocaleZhCN: '简体中文',
   settingsLocaleEnUS: 'English',
   settingDialogAsideMemoryOptionLabel: '记忆',
+  customInstructions: '自定义指令',
+  customInstructionsDescription:
+    '你希望每次回答都遵守的要求。只由你编辑，与记忆无关，保存后立即生效。',
+  customInstructionsEmpty: '还没有内容。',
+  customInstructionsPlaceholder: '例如：回答尽量简短；代码示例用 TypeScript。',
   memory: '记忆',
   memoryDescription:
     '根据过往对话整理出你的档案和近期对话摘要，新对话开始时自动参考。记忆只保存在这个浏览器中；整理时会把对话内容发送给所配置的 API 服务。',

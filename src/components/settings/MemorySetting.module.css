@@ -41,6 +41,10 @@
   }
 }
 
+.instructionsEditor {
+  min-height: 120px;
+}
+
 .editorActions {
   display: flex;
   justify-content: flex-end;

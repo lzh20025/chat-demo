@@ -219,9 +219,6 @@ export const getMemorySnapshot = (sessionId: string): MemorySnapshot => {
   return snapshot
 }
 
-export const appendMemory = (system: string, block: string): string =>
-  block ? `${system}\n\n${block}` : system
-
 const setActivity = (activity: MemoryActivity) => set({ activity })
 
 const removePending = (sessionId: string) =>

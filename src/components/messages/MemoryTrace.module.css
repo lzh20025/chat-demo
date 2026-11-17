@@ -94,6 +94,7 @@
   line-height: 22px;
   font-weight: 500;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .detail {

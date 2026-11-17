@@ -1,4 +1,4 @@
-import { extractMemoryUsed } from '../memory/marker.js'
+import { extractMemoryUsed, formatMemoryMarker } from '../memory/marker.js'
 import type {
   AssistantBlockParam,
   FileBlockParam,
@@ -229,7 +229,7 @@ const toUserParam = ({ content, files }: UserMessage): MessageParam => {
  * - 阅读链接结果原样回传，保留 signature：服务端解密后将页面拼回该轮提问末尾；
  */
 const toAssistantParam = (
-  { blocks }: AssistantMessage,
+  { blocks, memoryUsed }: AssistantMessage,
   prefix = false,
   thinking = false
 ): Extract<MessageParam, { role: 'assistant' }> => {
@@ -284,6 +284,13 @@ const toAssistantParam = (
     ) {
       content.push(block)
     }
+  }
+  // 归因标记在保存时已从正文剥离。历史回答里如果都没有它，模型会照着历史的样子也不再输出，
+  // 几轮之后归因就断了：回传时按保存的编号补回去。续写的前缀不补，模型会接着正文往下写。
+  // 只补模型确实报过的（含明确报告「没用到」的空列表）；没有报告的回答保持原样，不替它编一个。
+  const last = content.at(-1)
+  if (!prefix && memoryUsed && last?.type === 'text' && last.text.trim()) {
+    last.text = `${last.text.trimEnd()}\n${formatMemoryMarker(memoryUsed)}`
   }
   return {
     role: 'assistant',
