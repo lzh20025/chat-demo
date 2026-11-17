@@ -3,6 +3,7 @@ import { useTranslate } from '../i18n/index.js'
 import { useSettings } from '../services/settings.js'
 import { useIsMobile, useMobileViewport, usePreventPageScroll } from './viewport.js'
 import { initMemory } from '../services/memory/store.js'
+import { useStorageNotice } from '../services/chat/db.js'
 import {
   bindChatPersistence,
   initChat,
@@ -50,6 +51,7 @@ export const App = () => {
     state.activeId === null ? false : Object.hasOwn(state.streaming, state.activeId)
   )
   const activeId = useChatStore((state) => state.activeId)
+  const storageNotice = useStorageNotice((state) => state.notice)
 
   usePreventPageScroll(isMobile)
 
@@ -80,6 +82,16 @@ export const App = () => {
       <div ref={frameRef} className={styles.frame}>
         {isMobile ? <MobileSider /> : siderCollapsed ? null : <Sider />}
         <main className={styles.main}>
+          {storageNotice ? (
+            <div className={styles.saveError} role="alert">
+              <span>{t(storageNotice === 'blocked' ? 'storageBlocked' : 'storageOutdated')}</span>
+              {storageNotice === 'outdated' ? (
+                <Button variant="outlined" size="s" onClick={() => window.location.reload()}>
+                  {t('storageReload')}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
           {saveError ? (
             <div className={styles.saveError} role="alert">
               <span>{t('sessionSaveFailed')}</span>

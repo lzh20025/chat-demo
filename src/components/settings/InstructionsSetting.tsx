@@ -5,8 +5,8 @@ import { INSTRUCTIONS_LIMIT } from '../../services/instructions.js'
 import { setCustomInstructions, useSettings } from '../../services/settings.js'
 import { Button } from '../base/Button.js'
 import { showToast } from '../base/toastState.js'
-import memoryStyles from './MemorySetting.module.css'
 import styles from './Settings.module.css'
+import textBoxStyles from './TextBox.module.css'
 
 /**
  * 设置 →「通用设置」里的自定义指令：用户希望每次回答都遵守的要求。
@@ -45,13 +45,13 @@ export const InstructionsSetting = () => {
         ) : null}
       </div>
       {draft === null ? (
-        <div className={clsx(memoryStyles.profile, !saved && memoryStyles.empty)}>
+        <div className={clsx(textBoxStyles.box, !saved && textBoxStyles.empty)}>
           {saved || t('customInstructionsEmpty')}
         </div>
       ) : (
         <>
           <textarea
-            className={clsx(memoryStyles.editor, memoryStyles.instructionsEditor)}
+            className={textBoxStyles.editor}
             aria-label={t('customInstructions')}
             placeholder={t('customInstructionsPlaceholder')}
             maxLength={INSTRUCTIONS_LIMIT}
@@ -59,7 +59,7 @@ export const InstructionsSetting = () => {
             autoFocus
             onChange={(event) => setDraft(event.target.value)}
           />
-          <div className={memoryStyles.editorActions}>
+          <div className={textBoxStyles.editorActions}>
             <Button variant="outlined" size="m" onClick={() => setDraft(null)}>
               {t('cancel')}
             </Button>

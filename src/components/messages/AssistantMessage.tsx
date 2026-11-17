@@ -6,13 +6,17 @@ import { describeReply } from '../../services/chat/describe.js'
 import { canContinueReply } from '../../services/chat/reply.js'
 import { continueReply, regenerateReply } from '../../services/chat/store.js'
 import { stopReadAloud } from '../../services/speech/readAloud.js'
-import type { AssistantMessage as AssistantMessageType } from '../../services/chat/types.js'
+import type {
+  AssistantMessage as AssistantMessageType,
+  MemoryChange,
+} from '../../services/chat/types.js'
 import { openSettings } from '../settings/settingsDialogState.js'
 import { IconButton } from '../base/IconButton.js'
 import { Button } from '../base/Button.js'
 import { Markdown } from '../markdown/Markdown.js'
 import { ReadAloudButton } from './ReadAloudButton.js'
 import { CopyButton } from './CopyButton.js'
+import { MemoryNotice } from './MemoryNotice.js'
 import { ReferenceChip } from './ReferenceChip.js'
 import { ReplyArea } from './ReplyArea.js'
 import { useReplyView } from './useReplyView.js'
@@ -33,6 +37,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   busy,
   versions,
   onSelectVersion,
+  memoryChanges,
 }: {
   sessionId: string
   message: AssistantMessageType
@@ -41,6 +46,8 @@ export const AssistantMessage = memo(function AssistantMessage({
   busy: boolean
   versions: MessageVersions
   onSelectVersion: SelectMessageVersion
+  /** 这一轮提问上挂的记忆改动，显示在当前可见的回答下方 */
+  memoryChanges?: MemoryChange[]
 }) {
   const t = useTranslate()
   const view = useReplyView(message, streaming)
@@ -120,6 +127,9 @@ export const AssistantMessage = memo(function AssistantMessage({
             ) : null}
           </span>
         </div>
+      ) : null}
+      {!streaming && memoryChanges?.length ? (
+        <MemoryNotice sessionId={sessionId} messageId={message.id} changes={memoryChanges} />
       ) : null}
       {streaming ? null : (
         <div className={styles.bottom}>

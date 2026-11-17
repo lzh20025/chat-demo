@@ -1,0 +1,92 @@
+/* 回答下方的记忆提示：与错误提示同一位置，字号更小、颜色更淡，不抢正文 */
+.notice {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+
+  > svg {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    margin-top: 3px;
+  }
+}
+
+/* 没有图标的行与第一行的文字对齐 */
+.indent {
+  padding-left: 20px;
+}
+
+.body {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dimmed .text {
+  opacity: 0.6;
+}
+
+.action {
+  margin: -2px 0 -2px 10px;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 500;
+  color: var(--dsw-alias-brand-text);
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    text-decoration: underline;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
+
+.summary {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--dsw-alias-label-secondary);
+  }
+}
+
+.chevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-top: 3px;
+  transition: transform var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+.intro {
+  margin-top: 2px;
+}

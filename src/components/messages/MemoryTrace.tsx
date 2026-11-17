@@ -1,12 +1,10 @@
 import clsx from 'clsx'
 import { useState, type ReactNode } from 'react'
 import { useTranslate } from '../../i18n/index.js'
-import {
-  correctProfileItem,
-  findProfileOrigin,
-  forgetDigest,
-  muteProfileItem,
-} from '../../services/memory/store.js'
+import type { MemoryItem } from '../../services/chat/types.js'
+import { editItem, findItem, findItemByText, muteItem } from '../../services/memory/items.js'
+import { sameText } from '../../services/memory/ops.js'
+import { forgetDigest, useMemory } from '../../services/memory/store.js'
 import { formatTime, type MemoryTrace } from '../../services/memory/text.js'
 import { Button } from '../base/Button.js'
 import { IconButton } from '../base/IconButton.js'
@@ -73,31 +71,71 @@ const Item = ({
 
 const failed = () => showToast({ key: 'memorySaveFailed', type: 'error' })
 
+/** 条目从哪来：出处对话（标题 + 时间）、用户自己加的或确认过的、早期整理留下的 */
+const describeOrigin = (
+  item: MemoryItem | undefined,
+  t: ReturnType<typeof useTranslate>
+): string => {
+  if (!item) {
+    return t('memoryTraceGone')
+  }
+  if (item.sources.length) {
+    return t('memoryTraceOriginChats', {
+      sources: item.sources
+        .map((source) =>
+          t('memoryTraceOriginSource', {
+            title: source.title || t('memoryUntitled'),
+            time: formatTime(source.at),
+          })
+        )
+        .join(t('memoryListSeparator')),
+    })
+  }
+  return t(item.origin === 'user' ? 'memoryTraceOriginUser' : 'memoryTraceOriginEarly')
+}
+
 /**
- * 档案里的一条记忆，是模型归纳出来的，可能不对：
- * 提供更正、不再提及，以及这条是哪次整理写进来的。
- * 面板展示的是回答当时的快照，操作作用于当前档案。
+ * 记忆里的一条，多半是模型归纳出来的，可能不对：提供更正、别再提，以及这条从哪来。
+ * 面板标题展示回答当时用到的内容；操作作用于现在的条目——有条目 id 时按 id 找（被合并也能找到），
+ * 较早的回答没有 id，按原文找。现在的内容与当时不同、或已不在记忆里时，在下方注明。
  */
-const ProfileItem = ({ text }: { text: string }) => {
+const ProfileItem = ({ text, itemId }: { text: string; itemId?: string }) => {
   const t = useTranslate()
-  const [current, setCurrent] = useState(text)
+  const ready = useMemory((state) => state.ready)
+  const item = useMemory((state) =>
+    itemId ? findItem(state.items, itemId) : findItemByText(state.items, text)
+  )
   const [draft, setDraft] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
   const [muted, setMuted] = useState(false)
+  const current = item?.text ?? text
+
+  const missing = () => {
+    showToast({ key: 'memoryTraceMissing' })
+    openSettings('memory')
+  }
 
   const correct = async () => {
     const next = draft?.trim()
     if (!next) {
       return
     }
+    // 编辑期间条目可能在别处被删掉
+    if (!item) {
+      setDraft(null)
+      missing()
+      return
+    }
     try {
-      if (await correctProfileItem(current, next)) {
-        setCurrent(next)
+      if (await editItem(item.id, next)) {
         setNote(t('memoryTraceCorrectedNote'))
         showToast({ key: 'memoryTraceCorrected' })
+      } else if (findItem(useMemory.getState().items, item.id)) {
+        // 条目还在却没保存：内容为空或像密码、密钥
+        failed()
+        return
       } else {
-        showToast({ key: 'memoryTraceCorrectMissing' })
-        openSettings('memory')
+        missing()
       }
       setDraft(null)
     } catch {
@@ -107,7 +145,7 @@ const ProfileItem = ({ text }: { text: string }) => {
 
   const mute = async () => {
     try {
-      await muteProfileItem(current)
+      await muteItem({ id: item?.id, text: current })
       setMuted(true)
       setNote(t('memoryTraceMutedNote'))
       showToast({ key: 'memoryTraceMuted' })
@@ -116,24 +154,24 @@ const ProfileItem = ({ text }: { text: string }) => {
     }
   }
 
-  const explain = () => {
-    const origin = findProfileOrigin(current)
-    setNote(
-      origin
-        ? t('memoryTraceOriginDream', {
-            time: formatTime(origin.at),
-            titles: origin.sources.map((title) => title || t('memoryUntitled')).join(' / '),
-          })
-        : t('memoryTraceOriginUnknown')
-    )
-  }
+  // 现在的内容与回答当时不同（更正过、被整理改写过），或已经不在记忆里
+  const detail = muted
+    ? undefined
+    : item
+      ? sameText(item.text, text)
+        ? undefined
+        : t('memoryTraceNow', { text: item.text })
+      : ready
+        ? t('memoryTraceGone')
+        : undefined
 
   return (
     <>
       <Item
         icon={<IconMemoryOutline16 />}
         label={t('memory')}
-        title={current}
+        title={text}
+        detail={detail}
         note={note}
         dimmed={muted}
         options={[
@@ -141,7 +179,8 @@ const ProfileItem = ({ text }: { text: string }) => {
             key: 'correct',
             label: t('memoryTraceCorrect'),
             icon: <IconEditOutline16 />,
-            onSelect: () => setDraft(current),
+            // 已经不在记忆里的没法更正，直接带去设置
+            onSelect: () => (item ? setDraft(item.text) : missing()),
           },
           {
             key: 'mute',
@@ -153,7 +192,7 @@ const ProfileItem = ({ text }: { text: string }) => {
             key: 'origin',
             label: t('memoryTraceOrigin'),
             icon: <IconInfoOutline16 />,
-            onSelect: explain,
+            onSelect: () => setNote(describeOrigin(item, t)),
           },
         ]}
       />
@@ -242,7 +281,11 @@ export const MemoryItems = ({ trace }: { trace: MemoryTrace }) => (
   <>
     {trace.profile.flatMap((group, groupIndex) =>
       group.items.map((item, index) => (
-        <ProfileItem key={item.id ?? `${groupIndex}-${index}`} text={item.text} />
+        <ProfileItem
+          key={item.id ?? `${groupIndex}-${index}`}
+          text={item.text}
+          itemId={item.itemId}
+        />
       ))
     )}
     {trace.recent.map((item, index) => (
