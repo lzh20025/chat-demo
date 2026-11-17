@@ -11,7 +11,9 @@ import {
   onHistoryReplaced,
   onSessionRemoved,
 } from '../memory/store.js'
-import { useSettings } from '../settings.js'
+import { activeEffort, providerBaseUrl, useSettings } from '../settings.js'
+import { getProvider } from '../providers.js'
+import { streamExternal, type ExternalMessage } from '../api/external.js'
 import { appendBranch, getVisibleMessages, normalizeSession, selectVersion } from './branches.js'
 import * as db from './db.js'
 import {
@@ -261,16 +263,22 @@ export const bindChatPersistence = () => {
   }
 }
 
-/** 按当前设置创建回复：记录模型、深度思考开关与思考强度；搜索不记录，由模型按需决定。 */
+/** 按当前设置创建回复：记录服务商、模型、深度思考开关与思考强度；搜索不记录，由模型按需决定。 */
 const createReply = (): AssistantMessage => {
-  const { model, thinking, effort } = useSettings.getState()
+  const state = useSettings.getState()
+  const { model, thinking, provider } = state
+  const external =
+    provider === 'deepseek'
+      ? null
+      : { provider, providerModel: state.providers[provider]?.model?.trim() ?? '' }
   return {
     id: createId(),
     role: 'assistant',
     createdAt: Date.now(),
-    model,
+    model: external ? null : model,
+    ...external,
     thinking,
-    effort,
+    effort: activeEffort(state),
     prefix: true,
     status: 'pending',
     blocks: [],
@@ -992,6 +1000,21 @@ const waitForRetry = (attempt: number, signal: AbortSignal) =>
     signal.addEventListener('abort', onAbort, { once: true })
   })
 
+/** 其他服务商的上下文只保留文字：去掉系统信息快照、附件、思考和工具块 */
+const toExternalMessages = (history: Message[], question: UserMessage): ExternalMessage[] =>
+  toRequestMessages(history, question, undefined, false).flatMap((message): ExternalMessage[] => {
+    if (message.role === 'latest_reminder') {
+      return []
+    }
+    const content =
+      typeof message.content === 'string'
+        ? message.content
+        : message.content
+            .flatMap((block) => (block.type === 'text' ? [block.text] : []))
+            .join('\n\n')
+    return content.trim() ? [{ role: message.role, content }] : []
+  })
+
 /**
  * 请求并消费流：先补齐附件的 serverId，再发请求；流式增量按动画帧刷新内存，完成、失败或停止后落盘。
  * 补传失败时回复记为 upload 错误，可重试。
@@ -1018,8 +1041,65 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
       let preparing = true
       let receivedContent = false
       try {
-        const prepared = await prepareFiles(sessionId, request, controller.signal)
+        const external = initial.provider
+        // 其他服务商只发文字，不补传附件
+        const prepared = external
+          ? refreshRequest(sessionId, request)
+          : await prepareFiles(sessionId, request, controller.signal)
         preparing = false
+        if (external) {
+          const { customInstructions, locale, providers } = useSettings.getState()
+          if (!initial.providerModel) {
+            throw new ApiError('protocol', { key: 'providerModelMissing' })
+          }
+          const previousReply = prepared.history.findLast((message) => message.role === 'assistant')
+          reply = { ...reply, instructions: customInstructions || undefined }
+          updateReply(sessionId, reply)
+          persist(sessionId)
+          const events = streamExternal(
+            {
+              provider: external,
+              protocol: getProvider(external).protocol,
+              baseUrl: providerBaseUrl(external),
+              apiKey: providers[external]?.apiKey ?? '',
+            },
+            {
+              model: initial.providerModel,
+              system: composeSystem(
+                '',
+                customInstructions,
+                '',
+                locale,
+                previousReply ? (previousReply.instructions ?? '') : undefined
+              ).trim(),
+              messages: toExternalMessages(prepared.history, prepared.question),
+              thinking: initial.thinking ?? false,
+              effort: initial.effort ?? 'high',
+            },
+            controller.signal
+          )
+          const blockIndexes = new Map<number, number>()
+          for await (const event of events) {
+            receivedContent ||= event.type === 'content_block_start'
+            reply = applyEvent(reply, event, Date.now(), blockIndexes)
+            if (document.visibilityState === 'hidden') {
+              flush()
+            } else {
+              frame ||= requestAnimationFrame(flush)
+            }
+          }
+          // 其他服务商不生成标题，用提问开头代替
+          if (titleRequests.has(controller) && !get().importingHistory) {
+            const title = prepared.question.content.trim().replace(/\s+/g, ' ').slice(0, 40)
+            if (title) {
+              updateSession(sessionId, (session) =>
+                session.title ? session : { ...session, title }
+              )
+            }
+          }
+          reply = settleReply(reply, 'done', Date.now())
+          break
+        }
         // 附件就绪后获取本轮信息；续写沿用原回答快照，重新生成的快照独立保存。
         const latestReminder = prepared.prefix
           ? prepared.prefix.latestReminder

@@ -5,8 +5,8 @@
  */
 
 export type ChatModel = 'deepseek-flash' | 'deepseek-v4-pro'
-/** 思考强度，取值与 GET /models 返回的 supported_levels 一致 */
-export type Effort = 'low' | 'high' | 'max'
+/** 思考强度；DeepSeek 支持 low / high / max，其他服务商的可选值见 providers.ts */
+export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 // ---------- 响应：内容块 ----------
 

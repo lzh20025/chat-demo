@@ -6,7 +6,7 @@ import {
   IconStopFill16,
   IconThinkOutline14,
 } from '../base/icons.js'
-import { setThinking, useSettings } from '../../services/settings.js'
+import { isNativeProvider, setThinking, useSettings } from '../../services/settings.js'
 import { useIsMobile } from '../../app/viewport.js'
 import { sendMessage, stopReply, useChatStore } from '../../services/chat/store.js'
 import {
@@ -49,6 +49,8 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
     (state) => sessionId !== null && Object.hasOwn(state.streaming, sessionId)
   )
   const thinking = useSettings((state) => state.thinking)
+  // 语音和附件走 DeepSeek 的接口，其他服务商下隐藏
+  const native = useSettings(isNativeProvider)
   const importingHistory = useChatStore((state) => state.importingHistory)
   const isMobile = useIsMobile()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -73,7 +75,12 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
   }, [t])
 
   const acceptFiles = (files: File[]) => {
-    if (files.length === 0 || useChatStore.getState().importingHistory || !ensureApiKey()) {
+    if (
+      files.length === 0 ||
+      !isNativeProvider() ||
+      useChatStore.getState().importingHistory ||
+      !ensureApiKey()
+    ) {
       return
     }
     const error = addDraftFiles(sessionId, files, useSettings.getState().apiKey ?? '')
@@ -214,27 +221,31 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
           </Tooltip>
         </div>
         <div className={styles.right}>
-          <VoiceButton
-            status={voice.status}
-            disabled={!voice.available}
-            seconds={voice.seconds}
-            onClick={() => {
-              if (
-                voice.status !== 'idle' ||
-                (!useChatStore.getState().importingHistory && ensureApiKey())
-              ) {
-                void voice.toggle()
-              }
-            }}
-          />
-          <IconButton
-            size="m"
-            tone="primary"
-            icon={<IconPaperclipOutline16 />}
-            tooltip={t('uploadFile')}
-            disabled={importingHistory}
-            onClick={() => ensureApiKey() && fileInputRef.current?.click()}
-          />
+          {native ? (
+            <>
+              <VoiceButton
+                status={voice.status}
+                disabled={!voice.available}
+                seconds={voice.seconds}
+                onClick={() => {
+                  if (
+                    voice.status !== 'idle' ||
+                    (!useChatStore.getState().importingHistory && ensureApiKey())
+                  ) {
+                    void voice.toggle()
+                  }
+                }}
+              />
+              <IconButton
+                size="m"
+                tone="primary"
+                icon={<IconPaperclipOutline16 />}
+                tooltip={t('uploadFile')}
+                disabled={importingHistory}
+                onClick={() => ensureApiKey() && fileInputRef.current?.click()}
+              />
+            </>
+          ) : null}
           <input
             ref={fileInputRef}
             type="file"

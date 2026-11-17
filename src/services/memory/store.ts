@@ -3,7 +3,7 @@ import * as db from '../chat/db.js'
 import type { MemoryDigest, MemoryLogEntry, MemoryProfile } from '../chat/db.js'
 import type { Session } from '../chat/types.js'
 import { createId } from '../../utils/id.js'
-import { useSettings } from '../settings.js'
+import { useSettings, isNativeProvider } from '../settings.js'
 import { complete } from './llm.js'
 import { getPrompts } from './prompts.js'
 import {
@@ -118,7 +118,8 @@ const writeClearedAt = (value: number) => {
 const MEMORY_ENABLED_KEY = 'chat-demo:memory-enabled'
 
 const enabled = () => useSettings.getState().memoryEnabled
-const apiKey = () => useSettings.getState().apiKey
+/** 记忆的归纳与整理走 DeepSeek；选择其他服务商时不生成，也不把对话发给 DeepSeek */
+const apiKey = () => (isNativeProvider() ? useSettings.getState().apiKey : null)
 
 const sortLog = (log: MemoryLogEntry[]) => log.sort((a, b) => b.at - a.at)
 

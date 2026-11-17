@@ -192,6 +192,13 @@
   }
 }
 
+/* 服务商二选一：沿用主题选项的外观，去掉图标后压低高度 */
+.providerOptions .themeOption {
+  justify-content: center;
+  height: 44px;
+  padding: 0 16px;
+}
+
 .description {
   font-size: 12px;
   line-height: 18px;

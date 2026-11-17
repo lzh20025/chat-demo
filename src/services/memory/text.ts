@@ -50,7 +50,9 @@ export const isDigestible = (session: Session): boolean => {
   const messages = getVisibleMessages(session)
   return (
     messages.some((message) => message.role === 'user' && message.content.trim() !== '') &&
-    messages.some(answered)
+    messages.some(answered) &&
+    // 含其他服务商回答的对话不归纳：归纳走 DeepSeek，不应把这些对话发过去
+    !messages.some((message) => message.role === 'assistant' && message.provider)
   )
 }
 
