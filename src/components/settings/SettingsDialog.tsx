@@ -338,7 +338,7 @@ const ImportConfirm = ({
           <Button variant="outlined" size="m" autoFocus onClick={historyImport.cancel}>
             {t('cancel')}
           </Button>
-          <Button variant="dangerOutlined" size="m" onClick={() => void historyImport.confirm()}>
+          <Button variant="outlined" size="m" onClick={() => void historyImport.confirm()}>
             {t('historyImportConfirm')}
           </Button>
         </>
@@ -443,7 +443,7 @@ const SettingCell = ({
   )
 }
 
-/** 选文件后先提示覆盖；确认后才检查文件并执行导入，任何错误都提示导入失败。 */
+/** 选文件后先确认；确认后才检查文件并执行导入，任何错误都提示导入失败。 */
 const useHistoryImport = () => {
   const [file, setFile] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
@@ -459,8 +459,15 @@ const useHistoryImport = () => {
     setBusy(true)
     setStatus(null)
     try {
-      const count = await importHistory(file)
-      setStatus({ key: count === 1 ? 'historyImportedOne' : 'historyImported', params: { count } })
+      const { added, skipped } = await importHistory(file)
+      setStatus(
+        skipped > 0
+          ? { key: 'historyImportedSkipped', params: { count: added, skipped } }
+          : {
+              key: added === 1 ? 'historyImportedOne' : 'historyImported',
+              params: { count: added },
+            }
+      )
     } catch {
       setStatus({ key: 'historyImportFailed', error: true })
     } finally {
@@ -472,7 +479,7 @@ const useHistoryImport = () => {
   return { file, busy, status, select: setFile, cancel: () => setFile(null), confirm }
 }
 
-/** 导入 = 覆盖：用选中文件替换本地全部会话与附件。 */
+/** 导入 = 合并：把选中文件里本地没有的会话添加进来，已有会话不变。 */
 const ImportHistory = ({
   historyImport,
   disabled,

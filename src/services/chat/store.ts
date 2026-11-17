@@ -394,10 +394,10 @@ const waitForIdle = (sessionId?: string) =>
   })
 
 /**
- * 替换历史对话：先写入暂存，成功后原子替换旧记录；写入为空即删除全部会话与附件。
- * 期间停止生成并禁止修改会话；失败时清除暂存，保留原有记录。
+ * 历史整体变更（导入、全部删除）的公共流程：停止生成并禁止修改会话，清空暂存后执行 run；
+ * 失败时清除暂存，保留原有记录，并恢复被取消的读取。
  */
-export const replaceHistory = async (write: () => Promise<void>): Promise<number> => {
+const withHistoryLock = async <T>(run: () => Promise<T>): Promise<T> => {
   if (get().importingHistory) {
     throw new Error('History replacement is already in progress')
   }
@@ -406,21 +406,39 @@ export const replaceHistory = async (write: () => Promise<void>): Promise<number
     for (const controller of Object.values(get().streaming)) {
       controller.abort()
     }
-    // 已开始的单条删除先同步到内存，避免本次替换失败后列表残留已被删除的记录。
+    // 已开始的单条删除先同步到内存，避免本次变更失败后列表残留已被删除的记录。
     await Promise.all(deletionTasks)
     historyEpoch += 1
     initTask = undefined
     sessionLoads.clear()
     await waitForIdle()
     await db.clearStaging()
-    let summaries: SessionSummary[]
     try {
-      await write()
-      summaries = await db.commitStaging()
+      return await run()
     } catch (error) {
-      await db.clearStaging().catch(db.reportStorageError('clear unfinished history replacement'))
+      await db.clearStaging().catch(db.reportStorageError('clear unfinished history change'))
       throw error
     }
+  } finally {
+    set({ importingHistory: false })
+    retrySaveSessions()
+    const { activeId, ready } = get()
+    // 恢复被取消的详情读取；合并成功或失败后原有记录都继续可用。
+    if (activeId !== null) {
+      void ensureSessionLoaded(activeId)
+    } else if (!ready) {
+      void initChat()
+    }
+  }
+}
+
+/**
+ * 替换历史对话：先写入暂存，成功后原子替换旧记录；写入为空即删除全部会话与附件。
+ */
+export const replaceHistory = (write: () => Promise<void>): Promise<number> =>
+  withHistoryLock(async () => {
+    await write()
+    const summaries = await db.commitStaging()
     sessionAccess.clear()
     unsavedSessions.clear()
     pendingFiles.clear()
@@ -436,18 +454,27 @@ export const replaceHistory = async (write: () => Promise<void>): Promise<number
       activeId: null,
     })
     return summaries.length
-  } finally {
-    set({ importingHistory: false })
-    retrySaveSessions()
-    const { activeId, ready } = get()
-    // 替换失败时恢复被取消的详情读取，原有记录继续可用。
-    if (activeId !== null) {
-      void ensureSessionLoaded(activeId)
-    } else if (!ready) {
-      void initChat()
-    }
-  }
-}
+  })
+
+/**
+ * 合并历史对话：先写入暂存，成功后只添加本地没有的会话；已有会话、草稿、当前会话和记忆保持不变。
+ * 返回新增与因 ID 已存在而跳过的会话数。
+ */
+export const mergeHistory = (
+  write: () => Promise<void>
+): Promise<{ added: number; skipped: number }> =>
+  withHistoryLock(async () => {
+    await write()
+    const { added, skipped } = await db.mergeStaging()
+    const known = new Set(get().sessions.map((session) => session.id))
+    set((state) => ({
+      sessions: sortSessions([
+        ...state.sessions,
+        ...added.filter((session) => !known.has(session.id)),
+      ]),
+    }))
+    return { added: added.length, skipped }
+  })
 
 export const newChat = () => {
   if (!get().importingHistory) {

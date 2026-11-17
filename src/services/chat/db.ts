@@ -339,6 +339,60 @@ export const commitStaging = async (): Promise<SessionSummary[]> => {
   return summaries
 }
 
+/**
+ * 导入完成后把暂存合并进正式数据：只添加本地没有的会话及其图片原件，已有会话、原件和记忆保持不变。
+ * 同一事务内完成并清空暂存；事务失败时整体回滚，正式数据不变。
+ */
+export const mergeStaging = async (): Promise<{ added: SessionSummary[]; skipped: number }> => {
+  const added: SessionSummary[] = []
+  let skipped = 0
+  const tx = (await getDB()).transaction(
+    ['sessions', 'sessionSummaries', 'files', 'sessionsStaging', 'filesStaging'],
+    'readwrite'
+  )
+  const merge = async () => {
+    try {
+      const sessions = tx.objectStore('sessions')
+      const files = tx.objectStore('files')
+      // 只移入新增会话引用的原件，被跳过的会话不留下无主文件。
+      const fileIds = new Set<string>()
+      for (
+        let cursor = await tx.objectStore('sessionsStaging').openCursor();
+        cursor;
+        cursor = await cursor.continue()
+      ) {
+        if ((await sessions.count(cursor.key)) > 0) {
+          skipped += 1
+          continue
+        }
+        const summary = storedSummary(cursor.value)
+        await sessions.put(cursor.value)
+        await tx.objectStore('sessionSummaries').put(summary)
+        added.push(toSessionSummary(summary))
+        for (const id of summary.fileIds) {
+          fileIds.add(id)
+        }
+      }
+      for (
+        let cursor = await tx.objectStore('filesStaging').openCursor();
+        cursor;
+        cursor = await cursor.continue()
+      ) {
+        if (fileIds.has(cursor.key) && (await files.count(cursor.key)) === 0) {
+          await files.put(cursor.value)
+        }
+      }
+      await tx.objectStore('sessionsStaging').clear()
+      await tx.objectStore('filesStaging').clear()
+    } catch (error) {
+      abortTransaction(tx)
+      throw error
+    }
+  }
+  await Promise.all([merge(), tx.done])
+  return { added, skipped }
+}
+
 export const loadMemoryDigests = async (): Promise<MemoryDigest[]> =>
   (await getDB()).getAll('memoryDigests')
 
