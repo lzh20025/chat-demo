@@ -8,7 +8,7 @@ export type Locale = 'zh-CN' | 'en-US'
 /** 主题偏好；默认跟随系统 */
 export type ThemePreference = 'light' | 'dark' | 'system'
 
-/** 本机设置，存 localStorage：API Key、语言、主题、位置、朗读音色、模型、思考强度、深度思考开关、侧边栏收起状态、自定义指令 */
+/** 本机设置，存 localStorage：API Key、语言、主题、位置、朗读音色、模型、思考强度、深度思考开关、侧边栏收起状态、自定义指令、记忆首次说明 */
 type Settings = {
   apiKey: string | null
   locale: Locale
@@ -25,6 +25,11 @@ type Settings = {
   memoryEnabled: boolean
   /** 自定义指令：用户希望每次回答都遵守的要求；空字符串表示没有 */
   customInstructions: string
+  /**
+   * 对话内记忆提示的首次说明：null 表示还没出现过记忆提示；
+   * 消息 id 表示说明挂在这条回答的提示下方；done 表示用户已点「知道了」或打开过记忆设置
+   */
+  memoryIntro: string | null
 }
 
 const KEYS = {
@@ -39,6 +44,7 @@ const KEYS = {
   siderCollapsed: 'chat-demo:sider-collapsed',
   memoryEnabled: 'chat-demo:memory-enabled',
   customInstructions: 'chat-demo:custom-instructions',
+  memoryIntro: 'chat-demo:memory-intro',
 } as const
 
 const read = (key: string) => {
@@ -121,6 +127,7 @@ export const useSettings = create<Settings>(() => ({
   // 默认开启；只有明确关闭过才为 false
   memoryEnabled: read(KEYS.memoryEnabled) !== 'false',
   customInstructions: read(KEYS.customInstructions) ?? '',
+  memoryIntro: read(KEYS.memoryIntro) || null,
 }))
 
 export const setLocale = (locale: Locale) => {
@@ -178,4 +185,20 @@ export const setCustomInstructions = (value: string) => {
 export const setMemoryEnabled = (memoryEnabled: boolean) => {
   write(KEYS.memoryEnabled, String(memoryEnabled))
   useSettings.setState({ memoryEnabled })
+}
+
+/** 第一次出现记忆提示时，把首次说明挂到这条回答上；已经挂过或已看过时不变 */
+export const claimMemoryIntro = (messageId: string) => {
+  if (useSettings.getState().memoryIntro === null) {
+    write(KEYS.memoryIntro, messageId)
+    useSettings.setState({ memoryIntro: messageId })
+  }
+}
+
+/** 用户点了「知道了」或打开了记忆设置：首次说明不再显示 */
+export const finishMemoryIntro = () => {
+  if (useSettings.getState().memoryIntro !== 'done') {
+    write(KEYS.memoryIntro, 'done')
+    useSettings.setState({ memoryIntro: 'done' })
+  }
 }
