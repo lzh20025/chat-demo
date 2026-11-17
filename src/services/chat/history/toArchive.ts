@@ -181,6 +181,14 @@ const assistantFragments = (message: AssistantMessage): Fragment[] => {
   return fragments
 }
 
+const usedThinking = (reply: AssistantMessage | undefined) =>
+  reply?.blocks.some((block) => block.type === 'thinking') ?? false
+
+const usedSearch = (reply: AssistantMessage | undefined) =>
+  reply?.blocks.some(
+    (block) => block.type === 'server_tool_use' && block.name === 'deepseek_web_search'
+  ) ?? false
+
 const replyStatus = ({ status, stopReason }: AssistantMessage): ChatMessageStatus => {
   if (stopReason === 'refusal') {
     return 'CONTENT_FILTER'
@@ -247,8 +255,9 @@ export const toSessionFile = (original: Session, exportImage: ExportImage): Sess
       ...tree,
       role: message.role === 'user' ? 'USER' : 'ASSISTANT',
       status: message.role === 'user' ? 'FINISHED' : replyStatus(message),
-      thinking_enabled: reply?.thinking ?? false,
-      search_enabled: reply?.search ?? false,
+      // 未记录开关的回复按实际内容导出
+      thinking_enabled: reply?.thinking ?? usedThinking(reply),
+      search_enabled: reply?.search ?? usedSearch(reply),
       accumulated_token_usage: message.role === 'user' ? 0 : contextTokens(message),
       inserted_at: iso(message.createdAt),
       fragments:

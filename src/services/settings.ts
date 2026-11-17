@@ -7,15 +7,13 @@ export type Locale = 'zh-CN' | 'en-US'
 /** 主题偏好；默认跟随系统 */
 export type ThemePreference = 'light' | 'dark' | 'system'
 
-/** 本机设置，存 localStorage：API Key、语言、主题、位置、朗读音色、深度思考与智能搜索开关、侧边栏收起状态、自定义指令 */
+/** 本机设置，存 localStorage：API Key、语言、主题、位置、朗读音色、侧边栏收起状态、自定义指令 */
 type Settings = {
   apiKey: string | null
   locale: Locale
   themePreference: ThemePreference
   location: UserLocation | null
   ttsVoice: TtsVoice
-  thinking: boolean
-  search: boolean
   siderCollapsed: boolean
   /** 记忆开关；关闭后不注入、不生成，已保存的记忆保留 */
   memoryEnabled: boolean
@@ -29,8 +27,6 @@ const KEYS = {
   location: 'chat-demo:location',
   themePreference: 'chat-demo:theme-preference',
   ttsVoice: 'chat-demo:tts-voice',
-  thinking: 'chat-demo:thinking',
-  search: 'chat-demo:search',
   siderCollapsed: 'chat-demo:sider-collapsed',
   memoryEnabled: 'chat-demo:memory-enabled',
   customInstructions: 'chat-demo:custom-instructions',
@@ -99,8 +95,6 @@ export const useSettings = create<Settings>(() => ({
   location: initialLocation(),
   themePreference: initialThemePreference(),
   ttsVoice: initialTtsVoice(),
-  thinking: read(KEYS.thinking) === 'true',
-  search: read(KEYS.search) === 'true',
   siderCollapsed: read(KEYS.siderCollapsed) === 'true',
   // 默认开启；只有明确关闭过才为 false
   memoryEnabled: read(KEYS.memoryEnabled) !== 'false',
@@ -131,16 +125,6 @@ export const setTtsVoice = (ttsVoice: TtsVoice) => {
 export const setApiKey = (apiKey: string | null) => {
   write(KEYS.apiKey, apiKey)
   useSettings.setState({ apiKey })
-}
-
-export const setThinking = (thinking: boolean) => {
-  write(KEYS.thinking, String(thinking))
-  useSettings.setState({ thinking })
-}
-
-export const setSearch = (search: boolean) => {
-  write(KEYS.search, String(search))
-  useSettings.setState({ search })
 }
 
 export const setSiderCollapsed = (siderCollapsed: boolean) => {

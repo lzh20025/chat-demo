@@ -176,7 +176,8 @@ export type CreateMessageRequest = {
   model: ChatModel
   system: string
   messages: MessageParam[]
-  thinking: { type: 'enabled' | 'disabled' }
+  /** adaptive 由模型按问题决定是否思考 */
+  thinking: { type: 'adaptive' | 'enabled' | 'disabled' }
   tools: (DeepseekWebSearchTool | DeepseekReadUrlTool)[]
   safety_check: { level: 'high' }
   title?: { enabled: boolean }

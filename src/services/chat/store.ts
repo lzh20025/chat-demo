@@ -53,7 +53,7 @@ const FILE_RETRY_LIMIT = 2
 /** 退避基数，第 n 次重试等待 2^n 倍；连续失败达到上限就放弃，把原始报错展示出来 */
 const FILE_RETRY_BASE_DELAY = 1000
 
-/** 阅读链接始终开启，智能搜索开关控制是否另行声明搜索工具（含边想边搜）。 */
+/** 阅读链接与搜索工具默认都声明，是否搜索由模型决定；仅续写旧版关闭搜索的回复时不声明搜索。 */
 const serverTools = (search: boolean): CreateMessageRequest['tools'] => {
   const tools: CreateMessageRequest['tools'] = [
     { type: 'deepseek_read_url', name: 'deepseek_read_url' },
@@ -261,16 +261,17 @@ export const bindChatPersistence = () => {
   }
 }
 
-/** 按当前开关创建回复：深度思考对应 thinking，智能搜索控制 deepseek_web_search。 */
+/** 旧版回复沿用记录的开关；未记录时由模型自行决定是否思考。 */
+const thinkingType = (thinking: boolean | undefined) =>
+  thinking === undefined ? 'adaptive' : thinking ? 'enabled' : 'disabled'
+
+/** 创建回复：不记录思考与搜索开关，两者都交给模型按问题决定。 */
 const createReply = (): AssistantMessage => {
-  const { thinking, search } = useSettings.getState()
   return {
     id: createId(),
     role: 'assistant',
     createdAt: Date.now(),
     model: MODEL,
-    thinking,
-    search,
     prefix: true,
     status: 'pending',
     blocks: [],
@@ -718,13 +719,10 @@ export const continueReply = (sessionId: string, messageId: string) => {
   ) {
     return
   }
-  const { thinking, search } = useSettings.getState()
   const reply: AssistantMessage = {
     ...previous,
-    // 未记录请求配置的回复，续写时使用默认模型和当前开关。
+    // 未记录模型的回复续写时使用默认模型；思考与搜索沿用原记录，缺省时由模型决定。
     model: previous.model ?? MODEL,
-    thinking: previous.thinking ?? thinking,
-    search: previous.search ?? search,
     status: 'pending',
     stopReason: undefined,
     stopDetails: undefined,
@@ -1019,7 +1017,8 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
           prepared.history,
           prepared.question,
           prepared.prefix,
-          initial.thinking ?? false,
+          // 模型自行决定思考时，续写同样回传本轮已有的思考
+          initial.thinking ?? true,
           latestReminder
         )
         const events = streamMessage(
@@ -1035,9 +1034,9 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
               previousInstructions
             ),
             messages,
-            thinking: { type: initial.thinking ? 'enabled' : 'disabled' },
+            thinking: { type: thinkingType(initial.thinking) },
             safety_check: SAFETY_CHECK,
-            tools: serverTools(initial.search ?? false),
+            tools: serverTools(initial.search ?? true),
             ...(titleRequests.has(controller) ? { title: { enabled: true } } : {}),
           },
           controller.signal
