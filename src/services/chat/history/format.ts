@@ -11,8 +11,37 @@ export type Iso8601Utc = string
 
 export const EXPORT_FORMAT_VERSION = 3
 
-/** manifest.json，ZIP 的第一个条目 */
-export type Manifest = { export_format_version: typeof EXPORT_FORMAT_VERSION }
+/**
+ * manifest.json，ZIP 的第一个条目。
+ * chat_demo_memory 是本项目的扩展字段：读取方忽略不认识的字段，旧版本和上游仍能导入这个归档。
+ */
+export type Manifest = {
+  export_format_version: typeof EXPORT_FORMAT_VERSION
+  chat_demo_memory?: MemoryArchive
+}
+
+export const MEMORY_FORMAT_VERSION = 1
+
+export type MemoryCategoryName = 'BASICS' | 'ONGOING' | 'PREFERENCES' | 'PEOPLE' | 'OTHER'
+
+/** 一条已生效的记忆；待确认的内容不导出 */
+export type MemoryEntry = {
+  /** 单行一句话 */
+  text: string
+  /** 不认识的分类按 OTHER 导入 */
+  category: MemoryCategoryName
+  /** USER：用户添加、编辑、确认或明确要求记住的，后台整理不会改动；其他值按 AUTO 导入 */
+  origin: 'AUTO' | 'USER'
+  inserted_at: Iso8601Utc
+}
+
+/** 随历史导出的记忆。版本不认识或结构不合法时整体忽略，不影响会话导入 */
+export type MemoryArchive = {
+  version: typeof MEMORY_FORMAT_VERSION
+  items: MemoryEntry[]
+  /** 不再提及的话题 */
+  muted: string[]
+}
 
 /** chat_session_index.json 的一项，只列出成功写出的会话；位于全部会话 JSON 之后、图片之前 */
 export type SessionIndexEntry = {
@@ -33,6 +62,8 @@ export type SessionFile = {
   current_message_id: number
   inserted_at: Iso8601Utc
   updated_at: Iso8601Utc
+  /** 临时对话：不参考也不写入记忆。只在为 true 时写出 */
+  temporary?: boolean
   /** 消息树，分支靠 parent_id */
   messages: ChatMessage[]
 }

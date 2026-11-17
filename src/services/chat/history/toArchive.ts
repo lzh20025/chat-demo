@@ -1,15 +1,26 @@
 import type { ServerToolUseBlock } from '../../api/types.js'
+import type { MemoryExport } from '../../memory/items.js'
 import { getVisibleMessages, normalizeSession } from '../branches.js'
 import { describeReply } from '../describe.js'
-import type { AssistantMessage, Message, ReplyBlock, Session, UserMessage } from '../types.js'
-import { fail } from './errors.js'
 import type {
-  ChatMessage,
-  ChatMessageStatus,
-  FileEntry,
-  Fragment,
-  SessionFile,
-  SessionIndexEntry,
+  AssistantMessage,
+  MemoryCategory,
+  Message,
+  ReplyBlock,
+  Session,
+  UserMessage,
+} from '../types.js'
+import { fail } from './errors.js'
+import {
+  MEMORY_FORMAT_VERSION,
+  type ChatMessage,
+  type ChatMessageStatus,
+  type FileEntry,
+  type Fragment,
+  type MemoryArchive,
+  type MemoryCategoryName,
+  type SessionFile,
+  type SessionIndexEntry,
 } from './format.js'
 
 /** 返回图片原件在 ZIP 里的条目名；无原件或非图片附件返回 null，仅导出元数据。 */
@@ -270,9 +281,33 @@ export const toSessionFile = (original: Session, exportImage: ExportImage): Sess
     current_message_id: current ? id(current) : 0,
     inserted_at: iso(session.createdAt),
     updated_at: iso(session.updatedAt),
+    ...(session.temporary ? { temporary: true } : {}),
     messages,
   }
 }
+
+const categoryNames: Record<MemoryCategory, MemoryCategoryName> = {
+  basics: 'BASICS',
+  ongoing: 'ONGOING',
+  preferences: 'PREFERENCES',
+  people: 'PEOPLE',
+  other: 'OTHER',
+}
+
+/** 记忆写入 manifest 的扩展字段；时间异常的条目按导出时间写出 */
+export const toMemoryArchive = (memory: MemoryExport): MemoryArchive => ({
+  version: MEMORY_FORMAT_VERSION,
+  items: memory.items.map((item) => {
+    const createdAt = new Date(item.createdAt)
+    return {
+      text: item.text,
+      category: categoryNames[item.category] ?? 'OTHER',
+      origin: item.origin === 'user' ? 'USER' : 'AUTO',
+      inserted_at: Number.isFinite(createdAt.getTime()) ? createdAt.toISOString() : iso(Date.now()),
+    }
+  }),
+  muted: memory.muted,
+})
 
 export const toIndexEntry = (file: SessionFile): SessionIndexEntry => ({
   id: file.id,

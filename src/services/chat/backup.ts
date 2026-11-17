@@ -1,4 +1,6 @@
 import { formatDate } from '../../utils/format.js'
+import { exportMemory, importMemory, type MemoryExport } from '../memory/items.js'
+import { initMemory } from '../memory/store.js'
 import * as db from './db.js'
 import { mergeHistory, replaceHistory, useChatStore } from './store.js'
 import type { Session } from './types.js'
@@ -16,9 +18,12 @@ const enqueueBackup = <T>(run: () => Promise<T>): Promise<T> => {
 
 const backupFileName = (date: Date) => `deepseek_data-${formatDate(date)}.zip`
 
-/** 导出为历史会话导出格式的 ZIP，可再次导入。 */
+/** 导出为历史会话导出格式的 ZIP，可再次导入。记忆（已生效的条目和不再提及的话题）写在 manifest 里。 */
 export const exportHistory = (): Promise<{ name: string; blob: Blob }> =>
   enqueueBackup(async () => {
+    // 记忆启动时已读取，这里只确保读取完成；和会话列表一样取导出开始时的快照。
+    await initMemory()
+    const memory = exportMemory()
     // 列表和已加载内容保留导出开始时的快照；未打开的会话逐条读取，不填满详情缓存。
     const { sessions, sessionCache } = useChatStore.getState()
     async function* readSessions(): AsyncGenerator<Session> {
@@ -35,20 +40,44 @@ export const exportHistory = (): Promise<{ name: string; blob: Blob }> =>
     }
     const { exportArchive } = await import('./history/exportArchive.js')
     const now = new Date()
-    const blob = await exportArchive(readSessions())
+    const blob = await exportArchive(readSessions(), memory)
     return { name: backupFileName(now), blob }
   })
+
+export type ImportResult = {
+  /** 新增的会话数 */
+  added: number
+  /** 本地已存在而跳过的会话数 */
+  skipped: number
+  /** 新增的记忆条数；归档里没有记忆，或记忆导入失败时为 null */
+  memoryAdded: number | null
+  /** 会话已导入，但记忆导入失败 */
+  memoryFailed: boolean
+}
 
 /**
  * 确认导入后调用：先检查 ZIP 格式与版本，校验失败时保留正在生成的回答；
  * 通过后从 ZIP 流式写入暂存，成功才合并进本地：只添加本地没有的会话，已有会话不变。
- * 返回新增与跳过的会话数。
+ * 会话合并完成后再合并归档里的记忆（重复的跳过）；记忆导入失败单独报告，不算整次导入失败。
  */
-export const importHistory = (file: File): Promise<{ added: number; skipped: number }> =>
+export const importHistory = (file: File): Promise<ImportResult> =>
   enqueueBackup(async () => {
     const { checkArchiveFormat, importArchive } = await import('./history/importArchive.js')
     await checkArchiveFormat(file)
-    return mergeHistory(() => importArchive(file))
+    const archive: { memory: MemoryExport | null } = { memory: null }
+    const { added, skipped } = await mergeHistory(async () => {
+      archive.memory = await importArchive(file)
+    })
+    if (!archive.memory) {
+      return { added, skipped, memoryAdded: null, memoryFailed: false }
+    }
+    try {
+      const memoryAdded = await importMemory(archive.memory)
+      return { added, skipped, memoryAdded, memoryFailed: false }
+    } catch (error) {
+      db.reportStorageError('import memory')(error)
+      return { added, skipped, memoryAdded: null, memoryFailed: true }
+    }
   })
 
 /** 确认删除后调用：以空历史原子替换全部本地会话与附件，保留 API Key 和其他设置。 */

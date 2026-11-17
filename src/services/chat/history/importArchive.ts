@@ -1,9 +1,10 @@
+import type { MemoryExport } from '../../memory/items.js'
 import * as db from '../db.js'
 import { BackupError, fail } from './errors.js'
-import type { SessionIndexEntry } from './format.js'
+import type { MemoryArchive, SessionIndexEntry } from './format.js'
 import { INDEX_PATH, MANIFEST_PATH, USER_PATH, parseSessionPath, sessionFilesDir } from './paths.js'
-import { checkManifest, readSessionFile, readSessionIndex } from './schema.js'
-import { toLocalSession } from './toLocal.js'
+import { checkManifest, readManifestMemory, readSessionFile, readSessionIndex } from './schema.js'
+import { toLocalMemory, toLocalSession } from './toLocal.js'
 import {
   ArchiveError,
   isZipFile,
@@ -77,8 +78,9 @@ export const checkArchiveFormat = async (file: File): Promise<void> => {
  * 也支持会话与图片交错排列、index 位于末尾的条目顺序。
  * 会话读完立即暂存，只保留图片路径映射；图片全部读完后逐会话回填 MIME，不改变图片身份。
  * 写入导入暂存存储；调用方负责先清空暂存，成功后替换正式数据，失败时清理暂存。
+ * 返回 manifest 里随历史导出的记忆，由调用方在会话合并后另行导入；没有或无法读取时为 null，不影响会话导入。
  */
-export const importArchive = async (file: File): Promise<void> => {
+export const importArchive = async (file: File): Promise<MemoryExport | null> => {
   if (!(await isZipFile(file))) {
     fail('backupUnrecognized')
   }
@@ -87,6 +89,7 @@ export const importArchive = async (file: File): Promise<void> => {
   /** 已保存的原件：文件 ID → MIME。同一图片出现在多个会话目录时只保存一次。 */
   const stored = new Map<string, string>()
   let manifest = false
+  let memory: MemoryArchive | null = null
   let index: SessionIndexEntry[] | undefined
   let currentSessionId: string | undefined
 
@@ -109,7 +112,9 @@ export const importArchive = async (file: File): Promise<void> => {
         if (path !== MANIFEST_PATH) {
           fail('backupUnrecognized')
         }
-        checkManifest(await readJson(entry))
+        const value = await readJson(entry)
+        checkManifest(value)
+        memory = readManifestMemory(value)
         manifest = true
       } else if (path === USER_PATH && !index && imported.size === 0) {
         // 账号信息（已脱敏）不导入；文件可能缺失。
@@ -156,4 +161,5 @@ export const importArchive = async (file: File): Promise<void> => {
     fail('backupIncomplete')
   }
   await db.updateStagingFileTypes(stored)
+  return memory && toLocalMemory(memory)
 }
