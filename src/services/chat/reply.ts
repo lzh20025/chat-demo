@@ -181,6 +181,8 @@ export const getReplyText = (reply: AssistantMessage) =>
 export const canContinueReply = (reply: AssistantMessage): boolean => {
   if (
     !reply.prefix ||
+    // 续写依赖 DeepSeek 的前缀续写，其他服务商不支持
+    reply.provider ||
     reply.stopReason === 'refusal' ||
     reply.stopReason === 'tool_use' ||
     reply.blocks.some(

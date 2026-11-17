@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { IconEditOutline16 } from '../base/icons.js'
-import { useSettings } from '../../services/settings.js'
+import { activeApiKey, useSettings } from '../../services/settings.js'
 import { useIsMobile } from '../../app/viewport.js'
 import { IconButton } from '../base/IconButton.js'
 import { useApiKeyForm } from './useApiKeyForm.js'
@@ -9,9 +9,16 @@ import styles from './Settings.module.css'
 
 /** API Key 的编辑状态：输入框与移动端底部的「确定」按钮共用 */
 export const useApiKeyEditor = () => {
-  const apiKey = useSettings((state) => state.apiKey)
+  const apiKey = useSettings(activeApiKey)
+  const provider = useSettings((state) => state.provider)
   const [editing, setEditing] = useState(false)
   const form = useApiKeyForm(() => setEditing(false))
+  const { setValue } = form
+  // 切换服务商后显示该服务商自己的 Key，丢弃未提交的输入
+  useEffect(() => {
+    setEditing(false)
+    setValue('')
+  }, [provider, setValue])
   return { apiKey, editing, setEditing, form, showInput: !apiKey || editing }
 }
 

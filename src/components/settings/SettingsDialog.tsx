@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   IconDarkOutline16,
   IconDataOutline16,
@@ -19,12 +19,18 @@ import {
 import { useIsMobile } from '../../app/viewport.js'
 import { useChatStore } from '../../services/chat/store.js'
 import { regionCodes, getRegionName, provinces } from '../../services/location.js'
+import { PROVIDERS, getProvider, type ExternalProviderId } from '../../services/providers.js'
+import { fetchProviderModels, useProviderModels } from '../../services/providerModels.js'
 import {
+  activeEffort,
   isChineseBrowser,
+  providerBaseUrl,
   setEffort,
   setLocale,
   setLocation,
   setModel,
+  setProvider,
+  setProviderSettings,
   setThemePreference,
   setTtsVoice,
   useSettings,
@@ -42,7 +48,7 @@ import { closeSettings, useSettingsDialog, type SettingsSection } from './settin
 import styles from './Settings.module.css'
 
 /**
- * 设置弹窗：分「通用设置」（模型、思考强度、主题、语言、朗读音色、位置、自定义指令）、「记忆」（档案与近期对话摘要）与「数据管理」（API Key、导入、导出、删除）。
+ * 设置弹窗：分「通用设置」（模型、思考强度、主题、语言、朗读音色、位置、自定义指令）、「记忆」（档案与近期对话摘要）与「数据管理」（服务商、API Key、导入、导出、删除）。
  * 桌面端为居中弹窗、左侧导航；移动端为底部弹层、导航横排在内容上方
  */
 export const SettingsDialog = () => {
@@ -114,6 +120,7 @@ const SettingsContent = () => {
             <MemorySetting />
           ) : (
             <>
+              <ProviderSetting />
               <ApiKeyField editor={apiKeyEditor} />
               <ImportHistory historyImport={historyImport} disabled={historyBusy} />
               <ExportHistory disabled={historyBusy} />
@@ -303,10 +310,94 @@ const LocaleSetting = () => {
 }
 
 /** 朗读音色：stella（海星，女声）/ tide（暗潮，男声） */
+/** 服务商：DeepSeek 以外的服务商可改接口地址，自定义服务商必须填写 */
+const ProviderSetting = () => {
+  const t = useTranslate()
+  const provider = useSettings((state) => state.provider)
+  return (
+    <>
+      <SettingCell
+        label={t('settingsProvider')}
+        description={t('settingsProviderDescription')}
+        status={null}
+        action={
+          <Select
+            ariaLabel={t('settingsProvider')}
+            value={provider}
+            options={PROVIDERS.map((item) => ({ value: item.id, label: item.label }))}
+            onChange={setProvider}
+          />
+        }
+      />
+      {provider === 'deepseek' ? null : (
+        <TextSetting
+          key={provider}
+          label={t('settingsBaseUrl')}
+          value={useSettings.getState().providers[provider]?.baseUrl ?? ''}
+          placeholder={getProvider(provider).baseUrl || 'https://example.com/v1'}
+          onCommit={(baseUrl) => setProviderSettings(provider, { baseUrl })}
+        />
+      )}
+    </>
+  )
+}
+
+/** 单行文本设置：失焦或回车时保存 */
+const TextSetting = ({
+  label,
+  value,
+  placeholder,
+  options,
+  onCommit,
+}: {
+  label: string
+  value: string
+  placeholder: string
+  /** 可选的候选值，输入时提示 */
+  options?: string[]
+  onCommit: (value: string) => void
+}) => {
+  const [text, setText] = useState(value)
+  const listId = `setting-options-${label}`
+  return (
+    <div className={styles.cell}>
+      <div className={styles.apiKey}>
+        <div className={styles.label}>{label}</div>
+        <div className={styles.apiKeyInput}>
+          <input
+            type="text"
+            aria-label={label}
+            placeholder={placeholder}
+            autoComplete="off"
+            spellCheck={false}
+            list={options?.length ? listId : undefined}
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            onBlur={() => onCommit(text.trim())}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                event.currentTarget.blur()
+              }
+            }}
+          />
+          {options?.length ? (
+            <datalist id={listId}>
+              {options.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const ModelSetting = () => {
   const t = useTranslate()
+  const provider = useSettings((state) => state.provider)
   const model = useSettings((state) => state.model)
-  return (
+  return provider === 'deepseek' ? (
     <SettingCell
       label={t('settingsModel')}
       description={t('settingsModelDescription')}
@@ -323,12 +414,48 @@ const ModelSetting = () => {
         />
       }
     />
+  ) : (
+    <ExternalModelSetting key={provider} provider={provider} />
   )
 }
 
+/** 其他服务商的模型：手动填写模型 ID，已保存 Key 时提示服务商返回的模型列表 */
+const ExternalModelSetting = ({ provider }: { provider: ExternalProviderId }) => {
+  const t = useTranslate()
+  const saved = useSettings((state) => state.providers[provider])
+  const models = useProviderModels((state) => state[provider])
+  const apiKey = saved?.apiKey
+  useEffect(() => {
+    if (apiKey && !models && providerBaseUrl(provider)) {
+      // 列表只用于输入提示，获取失败不影响手动填写
+      fetchProviderModels(provider, apiKey).catch(() => {})
+    }
+  }, [provider, apiKey, models])
+  return (
+    <TextSetting
+      // 校验 Key 后可能自动填入默认模型
+      key={saved?.model ?? ''}
+      label={`${t('settingsModel')} (${getProvider(provider).label})`}
+      value={saved?.model ?? ''}
+      placeholder={t('settingsModelPlaceholder')}
+      options={models}
+      onCommit={(value) => setProviderSettings(provider, { model: value })}
+    />
+  )
+}
+
+const effortLabels = {
+  low: 'settingsEffortLow',
+  medium: 'settingsEffortMedium',
+  high: 'settingsEffortHigh',
+  xhigh: 'settingsEffortXhigh',
+  max: 'settingsEffortMax',
+} as const satisfies Record<string, TranslationKey>
+
 const EffortSetting = () => {
   const t = useTranslate()
-  const effort = useSettings((state) => state.effort)
+  const provider = useSettings((state) => state.provider)
+  const effort = useSettings(activeEffort)
   return (
     <SettingCell
       label={t('settingsEffort')}
@@ -338,11 +465,10 @@ const EffortSetting = () => {
         <Select
           ariaLabel={t('settingsEffort')}
           value={effort}
-          options={[
-            { value: 'low', label: t('settingsEffortLow') },
-            { value: 'high', label: t('settingsEffortHigh') },
-            { value: 'max', label: t('settingsEffortMax') },
-          ]}
+          options={getProvider(provider).efforts.map((value) => ({
+            value,
+            label: t(effortLabels[value]),
+          }))}
           onChange={setEffort}
         />
       }

@@ -2,6 +2,13 @@ import { create } from 'zustand'
 import type { TtsVoice } from './api/speech.js'
 import type { ChatModel, Effort } from './api/types.js'
 import { normalizeLocation, type UserLocation } from './location.js'
+import {
+  getProvider,
+  isProviderId,
+  resolveEffort,
+  type ExternalProviderId,
+  type ProviderId,
+} from './providers.js'
 
 export type Locale = 'zh-CN' | 'en-US'
 
@@ -9,8 +16,15 @@ export type Locale = 'zh-CN' | 'en-US'
 export type ThemePreference = 'light' | 'dark' | 'system'
 
 /** 本机设置，存 localStorage：API Key、语言、主题、位置、朗读音色、模型、思考强度、深度思考开关、侧边栏收起状态、自定义指令 */
+/** DeepSeek 以外各服务商的连接设置；接口地址缺省时使用服务商默认值 */
+export type ProviderSettings = { apiKey?: string; model?: string; baseUrl?: string }
+
 type Settings = {
+  /** DeepSeek 的 API Key；其他服务商的 Key 存在 providers 里，互不混用 */
   apiKey: string | null
+  /** 当前对话使用的服务商 */
+  provider: ProviderId
+  providers: Partial<Record<ExternalProviderId, ProviderSettings>>
   locale: Locale
   themePreference: ThemePreference
   location: UserLocation | null
@@ -29,6 +43,8 @@ type Settings = {
 
 const KEYS = {
   apiKey: 'chat-demo:api-key',
+  provider: 'chat-demo:provider',
+  providers: 'chat-demo:providers',
   locale: 'chat-demo:locale',
   location: 'chat-demo:location',
   themePreference: 'chat-demo:theme-preference',
@@ -98,6 +114,20 @@ const initialThemePreference = (): ThemePreference => {
 /** 未保存过时使用服务端默认音色 stella（海星） */
 const initialTtsVoice = (): TtsVoice => (read(KEYS.ttsVoice) === 'tide' ? 'tide' : 'stella')
 
+const initialProvider = (): ProviderId => {
+  const saved = read(KEYS.provider)
+  return isProviderId(saved) ? saved : 'deepseek'
+}
+
+const initialProviders = (): Settings['providers'] => {
+  try {
+    const value: unknown = JSON.parse(read(KEYS.providers) ?? '{}')
+    return typeof value === 'object' && value !== null ? (value as Settings['providers']) : {}
+  } catch {
+    return {}
+  }
+}
+
 /** 未保存过时使用 deepseek-flash */
 const initialModel = (): ChatModel =>
   read(KEYS.model) === 'deepseek-v4-pro' ? 'deepseek-v4-pro' : 'deepseek-flash'
@@ -105,11 +135,15 @@ const initialModel = (): ChatModel =>
 /** 未保存过时使用服务端默认强度 high */
 const initialEffort = (): Effort => {
   const saved = read(KEYS.effort)
-  return saved === 'low' || saved === 'max' ? saved : 'high'
+  return saved === 'low' || saved === 'medium' || saved === 'xhigh' || saved === 'max'
+    ? saved
+    : 'high'
 }
 
 export const useSettings = create<Settings>(() => ({
   apiKey: read(KEYS.apiKey),
+  provider: initialProvider(),
+  providers: initialProviders(),
   locale: initialLocale(),
   location: initialLocation(),
   themePreference: initialThemePreference(),
@@ -143,6 +177,40 @@ export const setTtsVoice = (ttsVoice: TtsVoice) => {
   write(KEYS.ttsVoice, ttsVoice)
   useSettings.setState({ ttsVoice })
 }
+
+export const setProvider = (provider: ProviderId) => {
+  write(KEYS.provider, provider)
+  useSettings.setState({ provider })
+}
+
+export const setProviderSettings = (provider: ExternalProviderId, patch: ProviderSettings) => {
+  const current = useSettings.getState().providers
+  const providers = { ...current, [provider]: { ...current[provider], ...patch } }
+  write(KEYS.providers, JSON.stringify(providers))
+  useSettings.setState({ providers })
+}
+
+/** 当前服务商是否为 DeepSeek；搜索、附件、语音、标题和记忆只在这时可用 */
+export const isNativeProvider = (state: Pick<Settings, 'provider'> = useSettings.getState()) =>
+  state.provider === 'deepseek'
+
+/** 当前服务商的 API Key */
+export const activeApiKey = (
+  state: Pick<Settings, 'provider' | 'providers' | 'apiKey'> = useSettings.getState()
+): string | null =>
+  state.provider === 'deepseek' ? state.apiKey : (state.providers[state.provider]?.apiKey ?? null)
+
+/** 外部服务商的接口地址：用户填写的优先，否则用默认值；去掉结尾斜杠 */
+export const providerBaseUrl = (
+  provider: ExternalProviderId,
+  state: Pick<Settings, 'providers'> = useSettings.getState()
+) =>
+  (state.providers[provider]?.baseUrl?.trim() || getProvider(provider).baseUrl).replace(/\/+$/, '')
+
+/** 当前服务商下实际生效的思考强度 */
+export const activeEffort = (
+  state: Pick<Settings, 'provider' | 'effort'> = useSettings.getState()
+) => resolveEffort(state.provider, state.effort)
 
 export const setModel = (model: ChatModel) => {
   write(KEYS.model, model)

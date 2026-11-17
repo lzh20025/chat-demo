@@ -12,6 +12,7 @@ import { IconButton } from '../base/IconButton.js'
 import { Button } from '../base/Button.js'
 import { Markdown } from '../markdown/Markdown.js'
 import { ReadAloudButton } from './ReadAloudButton.js'
+import { isNativeProvider, useSettings } from '../../services/settings.js'
 import { CopyButton } from './CopyButton.js'
 import { ReferenceChip } from './ReferenceChip.js'
 import { ReplyArea } from './ReplyArea.js'
@@ -52,6 +53,8 @@ export const AssistantMessage = memo(function AssistantMessage({
     .filter(Boolean)
     .join('\n\n')
   const copyText = responseText || notice?.text
+  // 朗读走 DeepSeek 的语音接口
+  const native = useSettings(isNativeProvider)
   const waiting = streaming && view.steps.length === 0 && !view.answer && !message.thinking
   return (
     <div className={styles.message}>
@@ -126,7 +129,7 @@ export const AssistantMessage = memo(function AssistantMessage({
           <BranchSwitcher versions={versions} disabled={busy} onSelect={onSelectVersion} />
           <div className={clsx(styles.actions, isLast && styles.alwaysShow)}>
             {copyText ? <CopyButton text={copyText} /> : null}
-            {responseText && !refused ? (
+            {responseText && !refused && native ? (
               <ReadAloudButton messageId={message.id} text={responseText} />
             ) : null}
             <IconButton
