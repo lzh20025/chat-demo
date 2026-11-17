@@ -17,6 +17,7 @@ import {
   IconEllipsisOutline16,
   IconInfoOutline16,
   IconMemoryOutline16,
+  IconSettingsOutline16,
 } from '../base/icons.js'
 import { Menu, type MenuOption } from '../base/Menu.js'
 import { Modal } from '../base/Modal.js'
@@ -249,6 +250,26 @@ export const MemoryItems = ({ trace }: { trace: MemoryTrace }) => (
     ))}
   </>
 )
+
+/** 自定义指令是用户自己写的，没有对错可改，只提供去设置里编辑的入口 */
+export const InstructionsItem = ({ text }: { text: string }) => {
+  const t = useTranslate()
+  return (
+    <Item
+      icon={<IconSettingsOutline16 />}
+      label={t('customInstructions')}
+      title={text}
+      options={[
+        {
+          key: 'edit',
+          label: t('memoryEdit'),
+          icon: <IconEditOutline16 />,
+          onSelect: () => openSettings('general'),
+        },
+      ]}
+    />
+  )
+}
 
 /** 记忆块无法拆成条目时（格式已变或内容损坏）退回显示原文 */
 export const MemoryRaw = ({ memory }: { memory: string }) => (

@@ -1,6 +1,6 @@
 /**
  * 记忆归因标记。记忆块整段注入，模型在回答末尾用一行
- * `<memory-used>m2,m7</memory-used>` 报出这次实际用到的条目编号；
+ * `<memory-used>m2,m7</memory-used>` 报出这次实际用到的条目编号（自定义指令的编号是 i1）；
  * 这一行不属于回答：流式显示时隐藏，回答结束时从正文剥离并存为 `memoryUsed`。
  */
 export const MEMORY_USED_TAG = 'memory-used'
@@ -16,11 +16,15 @@ const UNCLOSED = new RegExp(`\\s*<${MEMORY_USED_TAG}>[^<]*(?:<[^>]*)?$`)
 export const extractMemoryUsed = (text: string): { text: string; used: string[] | null } => {
   let used: string[] | null = null
   const stripped = text.replace(COMPLETE, (_, ids: string) => {
-    used = [...new Set(ids.match(/m\d+/g) ?? [])]
+    used = [...new Set(ids.match(/\b[mi]\d+\b/g) ?? [])]
     return ''
   })
   return { text: used === null ? text : stripped, used }
 }
+
+/** 回传历史回答时把标记补回正文末尾，格式与要求模型输出的一致 */
+export const formatMemoryMarker = (used: string[]): string =>
+  `${OPEN}${used.join(',')}</${MEMORY_USED_TAG}>`
 
 /** 流式显示用：隐藏完整的标记，以及末尾还没输出完的半截标记 */
 export const hideMemoryMarker = (text: string): string => {

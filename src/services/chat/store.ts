@@ -5,7 +5,6 @@ import type { ChatModel, CreateMessageRequest } from '../api/types.js'
 import { extractFileIds, getFileErrorCode, isRetryableApiError } from '../api/errors.js'
 import { cancelUpload, describeUploadError, uploadAttachment, useUploads } from '../attachments.js'
 import {
-  appendMemory,
   flushDigests,
   getMemorySnapshot,
   noteReplyDone,
@@ -22,6 +21,7 @@ import {
   getDraft,
   prepareDraftMessage,
 } from './drafts.js'
+import { composeSystem } from '../instructions.js'
 import { createLatestReminder } from './latestReminder.js'
 import {
   applyEvent,
@@ -1001,11 +1001,17 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
           : createLatestReminder(useSettings.getState())
         // 记忆块随回答保存，界面可展示这条回答实际参考的记忆
         const { block: memory, chats } = getMemorySnapshot(sessionId)
+        // 自定义指令每次请求读取当前内容，修改后立即生效；原文随回答保存供来源面板展示
+        const { customInstructions, locale } = useSettings.getState()
+        // 这段对话里上一条回答当时带的指令，用来判断指令是否中途改过
+        const previousReply = prepared.history.findLast((message) => message.role === 'assistant')
+        const previousInstructions = previousReply ? (previousReply.instructions ?? '') : undefined
         reply = {
           ...reply,
           latestReminder,
           memory: memory || undefined,
           memoryChats: chats.length ? chats : undefined,
+          instructions: customInstructions || undefined,
         }
         updateReply(sessionId, reply)
         persist(sessionId)
@@ -1020,8 +1026,14 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
           useSettings.getState().apiKey ?? '',
           {
             model: initial.model ?? MODEL,
-            // 记忆块追加在身份说明之后；同一会话沿用首次请求时的快照
-            system: appendMemory(SYSTEM_PROMPT, memory),
+            // 身份说明之后依次是自定义指令和记忆块；记忆在同一会话内沿用首次请求时的快照
+            system: composeSystem(
+              SYSTEM_PROMPT,
+              customInstructions,
+              memory,
+              locale,
+              previousInstructions
+            ),
             messages,
             thinking: { type: initial.thinking ? 'enabled' : 'disabled' },
             safety_check: SAFETY_CHECK,

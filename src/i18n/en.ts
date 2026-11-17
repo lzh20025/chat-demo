@@ -179,6 +179,11 @@ export const en = {
   settingsLocaleZhCN: 'Simplified Chinese',
   settingsLocaleEnUS: 'English',
   settingDialogAsideMemoryOptionLabel: 'Memory',
+  customInstructions: 'Custom instructions',
+  customInstructionsDescription:
+    'Requirements you want every reply to follow. Only you edit them, they are separate from memory, and they apply as soon as you save.',
+  customInstructionsEmpty: 'Nothing yet.',
+  customInstructionsPlaceholder: 'For example: keep answers short; use TypeScript in code samples.',
   memory: 'Memory',
   memoryDescription:
     'Builds a profile of you and summaries of recent chats from earlier conversations, and refers to them when a new chat starts. Memory is stored only in this browser; organizing it sends conversation content to the configured API service.',

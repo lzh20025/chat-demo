@@ -104,10 +104,15 @@ export type AssistantMessage = MessageBranch & {
    */
   memoryChats?: MemoryChat[]
   /**
-   * 模型在回答末尾报出的、这次实际用到的记忆编号（记忆块里的 m1、m2…），来源面板只展示这些。
+   * 模型在回答末尾报出的、这次实际用到的编号（记忆块里的 m1、m2…，以及自定义指令的 i1），来源面板只展示这些。
    * 空数组表示明确没用到；缺省表示没有收到报告（旧消息、回答被中断或模型没照做）。
    */
   memoryUsed?: string[]
+  /**
+   * 这次请求带上的自定义指令原文；模型报出指令的编号（i1，记在 memoryUsed 里）时，来源面板展示它。
+   * 没有指令时缺省；只保存在本地，不进入导出归档。
+   */
+  instructions?: string
   /** 是否允许作为续写前缀；仍需满足回复状态与内容限制。 */
   prefix: boolean
   status: ReplyStatus

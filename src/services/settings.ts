@@ -7,7 +7,7 @@ export type Locale = 'zh-CN' | 'en-US'
 /** 主题偏好；默认跟随系统 */
 export type ThemePreference = 'light' | 'dark' | 'system'
 
-/** 本机设置，存 localStorage：API Key、语言、主题、位置、朗读音色、深度思考与智能搜索开关、侧边栏收起状态 */
+/** 本机设置，存 localStorage：API Key、语言、主题、位置、朗读音色、深度思考与智能搜索开关、侧边栏收起状态、自定义指令 */
 type Settings = {
   apiKey: string | null
   locale: Locale
@@ -19,6 +19,8 @@ type Settings = {
   siderCollapsed: boolean
   /** 记忆开关；关闭后不注入、不生成，已保存的记忆保留 */
   memoryEnabled: boolean
+  /** 自定义指令：用户希望每次回答都遵守的要求；空字符串表示没有 */
+  customInstructions: string
 }
 
 const KEYS = {
@@ -31,6 +33,7 @@ const KEYS = {
   search: 'chat-demo:search',
   siderCollapsed: 'chat-demo:sider-collapsed',
   memoryEnabled: 'chat-demo:memory-enabled',
+  customInstructions: 'chat-demo:custom-instructions',
 } as const
 
 const read = (key: string) => {
@@ -101,6 +104,7 @@ export const useSettings = create<Settings>(() => ({
   siderCollapsed: read(KEYS.siderCollapsed) === 'true',
   // 默认开启；只有明确关闭过才为 false
   memoryEnabled: read(KEYS.memoryEnabled) !== 'false',
+  customInstructions: read(KEYS.customInstructions) ?? '',
 }))
 
 export const setLocale = (locale: Locale) => {
@@ -142,6 +146,12 @@ export const setSearch = (search: boolean) => {
 export const setSiderCollapsed = (siderCollapsed: boolean) => {
   write(KEYS.siderCollapsed, String(siderCollapsed))
   useSettings.setState({ siderCollapsed })
+}
+
+export const setCustomInstructions = (value: string) => {
+  const customInstructions = value.trim()
+  write(KEYS.customInstructions, customInstructions || null)
+  useSettings.setState({ customInstructions })
 }
 
 export const setMemoryEnabled = (memoryEnabled: boolean) => {

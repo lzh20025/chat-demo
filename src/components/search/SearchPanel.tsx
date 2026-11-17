@@ -1,11 +1,10 @@
 import type { ReactNode } from 'react'
 import { useTranslate } from '../../i18n/index.js'
-import { countMemoryItems } from '../../services/memory/text.js'
 import { IconCloseOutline16 } from '../base/icons.js'
 import { IconButton } from '../base/IconButton.js'
-import { MemoryItems, MemoryRaw } from '../messages/MemoryTrace.js'
+import { InstructionsItem, MemoryItems, MemoryRaw } from '../messages/MemoryTrace.js'
 import { openSettings } from '../settings/settingsDialogState.js'
-import { closeSearchPanel, useSearchPanel } from './searchPanelState.js'
+import { closeSearchPanel, countUsedMemory, useSearchPanel } from './searchPanelState.js'
 import { SourceCard } from './SourceCard.js'
 import styles from './SearchPanel.module.css'
 
@@ -68,7 +67,7 @@ export const SearchPanel = () => {
             {memory ? (
               <Section
                 title={t('memory')}
-                count={memory.trace ? countMemoryItems(memory.trace) : null}
+                count={countUsedMemory(memory)}
                 action={
                   <button
                     type="button"
@@ -81,9 +80,10 @@ export const SearchPanel = () => {
               >
                 {memory.trace ? (
                   <MemoryItems trace={memory.trace} />
-                ) : (
+                ) : memory.raw ? (
                   <MemoryRaw memory={memory.raw} />
-                )}
+                ) : null}
+                {memory.instructions ? <InstructionsItem text={memory.instructions} /> : null}
               </Section>
             ) : null}
             {sources.length ? (
