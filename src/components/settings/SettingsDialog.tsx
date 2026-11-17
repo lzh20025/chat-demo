@@ -310,33 +310,71 @@ const LocaleSetting = () => {
 }
 
 /** 朗读音色：stella（海星，女声）/ tide（暗潮，男声） */
-/** 服务商：DeepSeek 以外的服务商可改接口地址，自定义服务商必须填写 */
+/**
+ * 服务商：默认 DeepSeek，另有「其他服务商」一项。
+ * 选择其他服务商后再选具体是哪一家，并可改接口地址（自定义服务商必须填写）。
+ */
 const ProviderSetting = () => {
   const t = useTranslate()
   const provider = useSettings((state) => state.provider)
+  const otherProvider = useSettings((state) => state.otherProvider)
+  const label = t('settingsProvider')
+  const other = provider !== 'deepseek'
   return (
     <>
-      <SettingCell
-        label={t('settingsProvider')}
-        description={t('settingsProviderDescription')}
-        status={null}
-        action={
-          <Select
-            ariaLabel={t('settingsProvider')}
-            value={provider}
-            options={PROVIDERS.map((item) => ({ value: item.id, label: item.label }))}
-            onChange={setProvider}
-          />
-        }
-      />
+      <div className={styles.theme}>
+        {label}
+        <div
+          role="radiogroup"
+          aria-label={label}
+          className={clsx(styles.themeOptions, styles.providerOptions)}
+        >
+          <button
+            type="button"
+            role="radio"
+            aria-checked={!other}
+            className={clsx(styles.themeOption, !other && styles.themeOptionSelected)}
+            onClick={() => setProvider('deepseek')}
+          >
+            DeepSeek
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={other}
+            className={clsx(styles.themeOption, other && styles.themeOptionSelected)}
+            onClick={() => setProvider(otherProvider)}
+          >
+            {t('settingsProviderOther')}
+          </button>
+        </div>
+      </div>
       {provider === 'deepseek' ? null : (
-        <TextSetting
-          key={provider}
-          label={t('settingsBaseUrl')}
-          value={useSettings.getState().providers[provider]?.baseUrl ?? ''}
-          placeholder={getProvider(provider).baseUrl || 'https://example.com/v1'}
-          onCommit={(baseUrl) => setProviderSettings(provider, { baseUrl })}
-        />
+        <>
+          <SettingCell
+            label={t('settingsProviderOther')}
+            description={t('settingsProviderDescription')}
+            status={null}
+            action={
+              <Select
+                ariaLabel={t('settingsProviderOther')}
+                value={provider}
+                options={PROVIDERS.filter((item) => item.id !== 'deepseek').map((item) => ({
+                  value: item.id,
+                  label: item.label,
+                }))}
+                onChange={setProvider}
+              />
+            }
+          />
+          <TextSetting
+            key={provider}
+            label={t('settingsBaseUrl')}
+            value={useSettings.getState().providers[provider]?.baseUrl ?? ''}
+            placeholder={getProvider(provider).baseUrl || 'https://example.com/v1'}
+            onCommit={(baseUrl) => setProviderSettings(provider, { baseUrl })}
+          />
+        </>
       )}
     </>
   )

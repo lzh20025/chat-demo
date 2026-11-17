@@ -146,6 +146,7 @@ export const zh = {
   providerModelMissing: '请先在设置中选择模型',
   providerBaseUrlMissing: '请先填写接口地址',
   settingsProvider: '服务商',
+  settingsProviderOther: '其他服务商',
   settingsProviderDescription: '联网搜索、链接阅读、附件、语音、标题和记忆仅在使用 DeepSeek 时可用',
   settingsBaseUrl: '接口地址',
   settingsModelPlaceholder: '模型 ID',

@@ -152,6 +152,7 @@ export const en = {
   providerModelMissing: 'Choose a model in Settings first',
   providerBaseUrlMissing: 'Enter the base URL first',
   settingsProvider: 'Provider',
+  settingsProviderOther: 'Other provider',
   settingsProviderDescription:
     'Web search, link reading, attachments, voice, titles and memory are available only with DeepSeek',
   settingsBaseUrl: 'Base URL',

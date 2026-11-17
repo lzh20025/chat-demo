@@ -22,8 +22,10 @@ export type ProviderSettings = { apiKey?: string; model?: string; baseUrl?: stri
 type Settings = {
   /** DeepSeek 的 API Key；其他服务商的 Key 存在 providers 里，互不混用 */
   apiKey: string | null
-  /** 当前对话使用的服务商 */
+  /** 当前对话使用的服务商，默认 DeepSeek */
   provider: ProviderId
+  /** 最近一次选过的其他服务商，切回「其他服务商」时恢复 */
+  otherProvider: ExternalProviderId
   providers: Partial<Record<ExternalProviderId, ProviderSettings>>
   locale: Locale
   themePreference: ThemePreference
@@ -44,6 +46,7 @@ type Settings = {
 const KEYS = {
   apiKey: 'chat-demo:api-key',
   provider: 'chat-demo:provider',
+  otherProvider: 'chat-demo:other-provider',
   providers: 'chat-demo:providers',
   locale: 'chat-demo:locale',
   location: 'chat-demo:location',
@@ -119,6 +122,11 @@ const initialProvider = (): ProviderId => {
   return isProviderId(saved) ? saved : 'deepseek'
 }
 
+const initialOtherProvider = (): ExternalProviderId => {
+  const saved = read(KEYS.otherProvider)
+  return isProviderId(saved) && saved !== 'deepseek' ? saved : 'anthropic'
+}
+
 const initialProviders = (): Settings['providers'] => {
   try {
     const value: unknown = JSON.parse(read(KEYS.providers) ?? '{}')
@@ -143,6 +151,7 @@ const initialEffort = (): Effort => {
 export const useSettings = create<Settings>(() => ({
   apiKey: read(KEYS.apiKey),
   provider: initialProvider(),
+  otherProvider: initialOtherProvider(),
   providers: initialProviders(),
   locale: initialLocale(),
   location: initialLocation(),
@@ -180,7 +189,12 @@ export const setTtsVoice = (ttsVoice: TtsVoice) => {
 
 export const setProvider = (provider: ProviderId) => {
   write(KEYS.provider, provider)
-  useSettings.setState({ provider })
+  if (provider === 'deepseek') {
+    useSettings.setState({ provider })
+  } else {
+    write(KEYS.otherProvider, provider)
+    useSettings.setState({ provider, otherProvider: provider })
+  }
 }
 
 export const setProviderSettings = (provider: ExternalProviderId, patch: ProviderSettings) => {
