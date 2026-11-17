@@ -40,6 +40,11 @@ export type UserMessage = MessageBranch & {
   content: string
   files: FileAttachment[]
   createdAt: number
+  /**
+   * 回答后从这轮及之前的对话里提取出的记忆改动，显示在这条提问当前可见的回答下方，可撤销。
+   * 挂在提问上而不是回答上：重新生成、续写都会替换回答，提示不能跟着丢。只保存在本地，不进入导出归档。
+   */
+  memoryChanges?: MemoryChange[]
 }
 
 /** 思考块：thinking_delta 累积，签名随 signature_delta 到达；历史轮次的思考服务端会丢弃，不回传 */
@@ -72,6 +77,48 @@ export type ReplyBlock = ThinkingPart | TextPart | ServerToolBlock
  * done：收到 message_stop；stopped：用户停止或页面关闭；error：请求或流出错
  */
 export type ReplyStatus = 'pending' | 'streaming' | 'done' | 'stopped' | 'error'
+
+/** 记忆条目的分类，对应记忆块里的小节 */
+export type MemoryCategory = 'basics' | 'ongoing' | 'preferences' | 'people' | 'other'
+
+export const MEMORY_CATEGORIES: readonly MemoryCategory[] = [
+  'basics',
+  'ongoing',
+  'preferences',
+  'people',
+  'other',
+]
+
+/** 记忆条目来自哪次对话 */
+export type MemorySource = { sessionId: string; title: string; at: number }
+
+/**
+ * 一条记忆：关于用户的一件事，单行。
+ * 后台整理只能改写、删除、合并 origin 为 auto 的条目；用户添加、编辑、确认过或明确要求记住的是 user，由代码保护。
+ * pending 是等用户确认的敏感内容：确认前不注入、不导出、不参与整理。
+ */
+export type MemoryItem = {
+  id: string
+  text: string
+  category: MemoryCategory
+  origin: 'auto' | 'user'
+  status: 'saved' | 'pending'
+  sources: MemorySource[]
+  createdAt: number
+  updatedAt: number
+  /** 合并进这条的其他条目 id：旧的改动提示据此找到合并后的条目 */
+  aliases?: string[]
+}
+
+/**
+ * 一次提取对记忆的改动。at 是改动的时间，也是改动后条目的 updatedAt：条目之后没再变过才允许撤销；
+ * 早于上次清空记忆的改动不再显示。removed 带着删除前的整条记忆，撤销时原样放回；full 表示记忆已满，没能记下。
+ */
+export type MemoryChange =
+  | { kind: 'added' | 'asked'; itemId: string; text: string; at: number }
+  | { kind: 'updated'; itemId: string; text: string; previous: string; at: number }
+  | { kind: 'removed'; itemId: string; text: string; item: MemoryItem; at: number }
+  | { kind: 'full'; text: string; at: number }
 
 /** 回答参考的一段过往对话 */
 export type MemoryChat = {
@@ -110,6 +157,8 @@ export type AssistantMessage = MessageBranch & {
    * 模型看到的是摘要；来源面板展示用户自己说过的话，所以另存一份。旧消息没有这个字段。
    */
   memoryChats?: MemoryChat[]
+  /** 记忆块里的编号对应的记忆条目 id（m3 → 条目 id），来源面板按它操作；较早的回答没有，按原文查找 */
+  memoryIds?: Record<string, string>
   /**
    * 模型在回答末尾报出的、这次实际用到的编号（记忆块里的 m1、m2…，以及自定义指令的 i1），来源面板只展示这些。
    * 空数组表示明确没用到；缺省表示没有收到报告（旧消息、回答被中断或模型没照做）。
@@ -151,10 +200,12 @@ export type Session = {
   messages: Message[]
   /** undefined 表示线性消息列表；null 表示空会话。 */
   rootMessageId?: string | null
+  /** 临时对话：不参考记忆，内容也不会被记住。创建时决定，之后不变。 */
+  temporary?: boolean
 }
 
 /** 会话列表元数据；消息只在打开会话时加载。 */
-export type SessionSummary = Pick<Session, 'id' | 'title' | 'createdAt' | 'updatedAt'>
+export type SessionSummary = Pick<Session, 'id' | 'title' | 'createdAt' | 'updatedAt' | 'temporary'>
 
 /** 显式提取字段，避免将完整会话的消息带进列表。 */
 export const toSessionSummary = (session: SessionSummary): SessionSummary => ({
@@ -162,4 +213,5 @@ export const toSessionSummary = (session: SessionSummary): SessionSummary => ({
   title: session.title,
   createdAt: session.createdAt,
   updatedAt: session.updatedAt,
+  ...(session.temporary ? { temporary: true } : {}),
 })

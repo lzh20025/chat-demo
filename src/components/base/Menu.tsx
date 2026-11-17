@@ -27,7 +27,8 @@ export const Menu = ({
     open,
     { align: 'start', alignOffset: -5, offset: 4 }
   )
-  useDismiss(open, [anchorRef, floatingRef], close)
+  // Esc 只关闭菜单；菜单在弹窗里时不连带关闭弹窗
+  useDismiss(open, [anchorRef, floatingRef], close, { captureEscape: true })
 
   return (
     <>

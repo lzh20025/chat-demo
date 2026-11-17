@@ -1,9 +1,13 @@
 import { BackupError, fail } from './errors.js'
 import {
   EXPORT_FORMAT_VERSION,
+  MEMORY_FORMAT_VERSION,
   type ChatMessage,
   type FileEntry,
   type Fragment,
+  type MemoryArchive,
+  type MemoryCategoryName,
+  type MemoryEntry,
   type SearchResult,
   type SessionFile,
   type SessionIndexEntry,
@@ -64,6 +68,20 @@ const oneOf =
   <const T extends string>(...values: T[]): Read<T> =>
   (value) =>
     values.includes(value as T) ? (value as T) : invalid()
+
+/** 不合格时返回 null 而不是让整个导入失败，由调用方丢弃 */
+const lenient =
+  <T>(read: Read<T>): Read<T | null> =>
+  (value) => {
+    try {
+      return read(value)
+    } catch (error) {
+      if (error instanceof BackupError && error.key === 'backupIncomplete') {
+        return null
+      }
+      throw error
+    }
+  }
 
 const tipStyle = oneOf('INFO', 'WARNING', 'CAUTION')
 const searchStatus = oneOf('WIP', 'FINISHED', 'FAILED')
@@ -186,16 +204,7 @@ const readFragment: Read<Fragment> = (value) => {
 }
 
 /** 单个内容片段不兼容不影响其余消息；容器、元数据和后续消息树校验仍严格执行。 */
-const fragment: Read<Fragment | null> = (value) => {
-  try {
-    return readFragment(value)
-  } catch (error) {
-    if (error instanceof BackupError && error.key === 'backupIncomplete') {
-      return null
-    }
-    throw error
-  }
-}
+const fragment = lenient(readFragment)
 
 const message: Read<ChatMessage> = (value) => {
   const item = record(value)
@@ -258,6 +267,60 @@ export const readSessionFile: Read<SessionFile> = (value) => {
     current_message_id: count(item.current_message_id),
     inserted_at: time(item.inserted_at),
     updated_at: time(item.updated_at),
+    ...('temporary' in item && boolean(item.temporary) ? { temporary: true } : {}),
     messages: list(message)(item.messages),
   }
 }
+
+/** 记忆条目和不再提及的话题各自最多读取的条数，以及单条文字的长度上限；导入时还会按本地规则重新清洗、限长 */
+const MEMORY_LIST_LIMIT = 500
+const MEMORY_TEXT_LIMIT = 500
+
+const memoryCategories: MemoryCategoryName[] = [
+  'BASICS',
+  'ONGOING',
+  'PREFERENCES',
+  'PEOPLE',
+  'OTHER',
+]
+
+const memoryText: Read<string> = (value) => {
+  const text = string(value)
+  return text.trim() && text.length <= MEMORY_TEXT_LIMIT ? text : invalid()
+}
+
+const memoryEntry: Read<MemoryEntry> = (value) => {
+  const item = record(value)
+  const category = string(item.category)
+  return {
+    text: memoryText(item.text),
+    category: memoryCategories.includes(category as MemoryCategoryName)
+      ? (category as MemoryCategoryName)
+      : 'OTHER',
+    // 只有明确标为用户确认的才受保护，其余按自动记下的处理
+    origin: string(item.origin) === 'USER' ? 'USER' : 'AUTO',
+    inserted_at: time(item.inserted_at),
+  }
+}
+
+/** 逐条校验，不合格的丢弃，超出条数上限的不读 */
+const memoryList = <T>(value: unknown, read: Read<T>): T[] =>
+  (Array.isArray(value) ? value : invalid())
+    .slice(0, MEMORY_LIST_LIMIT)
+    .map(lenient(read))
+    .filter((item): item is T => item !== null)
+
+/**
+ * 读取 manifest 里随历史导出的记忆。记忆是可选的附加内容：
+ * 缺失、版本不认识或结构不合法时视为没有，从不让导入失败；没有可导入的内容时也返回 null。
+ */
+export const readManifestMemory = (manifest: unknown): MemoryArchive | null =>
+  lenient((value): MemoryArchive | null => {
+    const memory = record(record(value).chat_demo_memory)
+    if (memory.version !== MEMORY_FORMAT_VERSION) {
+      return null
+    }
+    const items = memoryList(memory.items, memoryEntry)
+    const muted = memoryList(memory.muted, memoryText)
+    return items.length || muted.length ? { version: MEMORY_FORMAT_VERSION, items, muted } : null
+  })(manifest)

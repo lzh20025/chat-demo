@@ -3,9 +3,11 @@ import type {
   WebFetchResult,
   WebFetchToolResultBlock,
 } from '../../api/types.js'
+import type { MemoryExport } from '../../memory/items.js'
 import type {
   AssistantMessage,
   FileAttachment,
+  MemoryCategory,
   Message,
   ReplyBlock,
   ReplyStatus,
@@ -13,7 +15,14 @@ import type {
   UserMessage,
 } from '../types.js'
 import { fail } from './errors.js'
-import type { ChatMessage, FileEntry, Fragment, SessionFile } from './format.js'
+import type {
+  ChatMessage,
+  FileEntry,
+  Fragment,
+  MemoryArchive,
+  MemoryCategoryName,
+  SessionFile,
+} from './format.js'
 import { sessionFilesDir } from './paths.js'
 
 export type LocalSession = {
@@ -286,6 +295,7 @@ export const toLocalSession = (file: SessionFile): LocalSession => {
     title: file.title ?? '',
     createdAt: time(file.inserted_at),
     updatedAt: time(file.updated_at),
+    ...(file.temporary ? { temporary: true } : {}),
     ...buildTree(file),
   }
   const images = new Map<string, string>()
@@ -316,3 +326,23 @@ export const toLocalSession = (file: SessionFile): LocalSession => {
   }
   return { session, images }
 }
+
+const categories: Record<MemoryCategoryName, MemoryCategory> = {
+  BASICS: 'basics',
+  ONGOING: 'ongoing',
+  PREFERENCES: 'preferences',
+  PEOPLE: 'people',
+  OTHER: 'other',
+}
+
+/** 转换随历史导出的记忆；条目文本由记忆模块按本地规则重新清洗后合并 */
+export const toLocalMemory = (memory: MemoryArchive): MemoryExport => ({
+  version: 1,
+  items: memory.items.map((item) => ({
+    text: item.text,
+    category: categories[item.category],
+    origin: item.origin === 'USER' ? 'user' : 'auto',
+    createdAt: time(item.inserted_at),
+  })),
+  muted: memory.muted,
+})

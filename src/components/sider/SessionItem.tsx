@@ -1,7 +1,12 @@
 import clsx from 'clsx'
 import { memo, useState } from 'react'
 import { useTranslate } from '../../i18n/index.js'
-import { IconEditOutline16, IconEllipsisOutline16, IconTrashOutline16 } from '../base/icons.js'
+import {
+  IconEditOutline16,
+  IconEllipsisOutline16,
+  IconTemporaryOutline14,
+  IconTrashOutline16,
+} from '../base/icons.js'
 import { renameSession, selectSession } from '../../services/chat/store.js'
 import type { SessionSummary } from '../../services/chat/types.js'
 import { IconButton } from '../base/IconButton.js'
@@ -55,7 +60,20 @@ export const SessionItem = memo(function SessionItem({
         closeMobileSider()
       }}
     >
-      <div className={styles.title}>{displayTitle}</div>
+      <div className={styles.title}>
+        <span className={styles.titleText}>{displayTitle}</span>
+        {/* 临时对话：标题后的小图标，读屏读作「临时对话」 */}
+        {session.temporary ? (
+          <span
+            className={styles.temporary}
+            role="img"
+            aria-label={t('temporaryChat')}
+            title={t('temporaryChat')}
+          >
+            <IconTemporaryOutline14 />
+          </span>
+        ) : null}
+      </div>
       <div className={styles.action} onClick={(event) => event.stopPropagation()}>
         <Menu
           options={[

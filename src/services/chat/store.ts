@@ -6,10 +6,12 @@ import { extractFileIds, getFileErrorCode, isRetryableApiError } from '../api/er
 import { cancelUpload, describeUploadError, uploadAttachment, useUploads } from '../attachments.js'
 import {
   flushDigests,
+  getMemoryGuidance,
   getMemorySnapshot,
   noteReplyDone,
   onHistoryReplaced,
   onSessionRemoved,
+  setMemoryChangeSink,
 } from '../memory/store.js'
 import { activeEffort, providerBaseUrl, useSettings } from '../settings.js'
 import { getProvider } from '../providers.js'
@@ -36,6 +38,7 @@ import {
   toSessionSummary,
   type AssistantMessage,
   type FileAttachment,
+  type MemoryChange,
   type Message,
   type Session,
   type SessionSummary,
@@ -83,6 +86,8 @@ type ChatState = {
   activeId: string | null
   /** 正在生成回复的会话 */
   streaming: Record<string, AbortController>
+  /** 新对话页是否选了临时对话；发出第一条消息时写入会话，开启新对话时复位 */
+  newChatTemporary: boolean
 }
 
 export const useChatStore = create<ChatState>(() => ({
@@ -95,6 +100,7 @@ export const useChatStore = create<ChatState>(() => ({
   sessionSaveErrors: {},
   activeId: null,
   streaming: {},
+  newChatTemporary: false,
 }))
 
 const { getState: get, setState: set } = useChatStore
@@ -113,7 +119,10 @@ const getStreamController = (id: string) => {
 }
 
 const sameSummary = (a: SessionSummary, b: SessionSummary) =>
-  a.title === b.title && a.createdAt === b.createdAt && a.updatedAt === b.updatedAt
+  a.title === b.title &&
+  a.createdAt === b.createdAt &&
+  a.updatedAt === b.updatedAt &&
+  Boolean(a.temporary) === Boolean(b.temporary)
 
 const sessionAccess = new Map<string, number>()
 const unsavedSessions = new Set<string>()
@@ -227,6 +236,63 @@ const persist = (sessionId: string) => {
       })
   }
 }
+
+/** 追加记忆改动到提问上；同一改动不重复追加（读取与写回交错时可能重复应用） */
+const appendMemoryChanges =
+  (messageId: string, changes: MemoryChange[]) =>
+  (message: Message): Message => {
+    if (message.id !== messageId || message.role !== 'user') {
+      return message
+    }
+    const key = (change: MemoryChange) =>
+      change.kind === 'full' ? `full:${change.text}` : `${change.kind}:${change.itemId}`
+    const existing = new Set((message.memoryChanges ?? []).map(key))
+    const added = changes.filter((change) => !existing.has(key(change)))
+    return added.length
+      ? { ...message, memoryChanges: [...(message.memoryChanges ?? []), ...added] }
+      : message
+  }
+
+/**
+ * 回答后整理出的记忆改动挂到对应的提问上，在它下方的回答里显示。不改会话的更新时间。
+ * 会话在内存里：直接更新，导入历史期间只标记未保存，结束后再写入，避免写回已被替换的历史；
+ * 不在内存里：在一个事务里读出、修改、写回，对话已被删除就放弃。
+ */
+setMemoryChangeSink((sessionId, messageId, changes) => {
+  if (deletingSessions.has(sessionId)) {
+    return
+  }
+  const apply = appendMemoryChanges(messageId, changes)
+  const patchCache = () => {
+    const session = getSession(sessionId)
+    if (!session) {
+      return false
+    }
+    const messages = session.messages.map(apply)
+    if (messages.some((message, index) => message !== session.messages[index])) {
+      updateSession(sessionId, (current) => ({ ...current, messages: current.messages.map(apply) }))
+      if (get().importingHistory) {
+        unsavedSessions.add(sessionId)
+      } else {
+        persist(sessionId)
+      }
+    }
+    return true
+  }
+  if (patchCache()) {
+    return
+  }
+  const epoch = historyEpoch
+  void db
+    .patchSessionMessage(sessionId, messageId, apply)
+    .then((patched) => {
+      // 写回期间会话被打开：内存里可能是写回前读到的旧版本，补上
+      if (patched && epoch === historyEpoch) {
+        patchCache()
+      }
+    })
+    .catch(db.reportStorageError('save memory changes'))
+})
 
 export const retrySaveSessions = () => {
   if (!get().importingHistory) {
@@ -488,10 +554,13 @@ export const newChat = () => {
   if (!get().importingHistory) {
     // 开始新对话前先把刚才的对话整理成摘要，不等延时
     flushDigests()
-    set({ activeId: null })
+    set({ activeId: null, newChatTemporary: false })
     trimSessionCache()
   }
 }
+
+/** 新对话页切换临时对话：不参考记忆，内容也不会被记住；发出第一条消息后不可再切换 */
+export const setNewChatTemporary = (newChatTemporary: boolean) => set({ newChatTemporary })
 
 export const selectSession = (id: string) => {
   if (!get().importingHistory && get().sessions.some((session) => session.id === id)) {
@@ -618,6 +687,7 @@ export const sendMessage = (targetSessionId: string | null) => {
       updatedAt: now,
       messages: [],
       rootMessageId: null,
+      ...(get().newChatTemporary ? { temporary: true } : {}),
     }
     sessionId = session.id
     touchSession(session.id)
@@ -625,6 +695,7 @@ export const sendMessage = (targetSessionId: string | null) => {
       sessions: [toSessionSummary(session), ...state.sessions],
       sessionCache: { ...state.sessionCache, [session.id]: session },
       activeId: session.id,
+      newChatTemporary: false,
     }))
   }
   const current = getSession(sessionId)
@@ -1104,8 +1175,13 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
         const latestReminder = prepared.prefix
           ? prepared.prefix.latestReminder
           : createLatestReminder(useSettings.getState())
-        // 记忆块随回答保存，界面可展示这条回答实际参考的记忆
-        const { block: memory, chats } = getMemorySnapshot(sessionId)
+        // 记忆块随回答保存，界面可展示这条回答实际参考的记忆；临时对话不带记忆
+        const temporary = getSession(sessionId)?.temporary ?? false
+        const {
+          block: memory,
+          chats,
+          ids,
+        } = temporary ? { block: '', chats: [], ids: {} } : getMemorySnapshot(sessionId)
         // 自定义指令每次请求读取当前内容，修改后立即生效；原文随回答保存供来源面板展示
         const { customInstructions, locale } = useSettings.getState()
         // 这段对话里上一条回答当时带的指令，用来判断指令是否中途改过
@@ -1116,8 +1192,11 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
           latestReminder,
           memory: memory || undefined,
           memoryChats: chats.length ? chats : undefined,
+          memoryIds: memory && Object.keys(ids).length ? ids : undefined,
           instructions: customInstructions || undefined,
         }
+        // 记忆说明跟在身份说明后面：记忆为空时也要告诉模型可以答应记住，临时对话说明不会保存
+        const guidance = getMemoryGuidance(temporary)
         updateReply(sessionId, reply)
         persist(sessionId)
         const messages = toRequestMessages(
@@ -1133,7 +1212,7 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
             model: initial.model ?? MODEL,
             // 身份说明之后依次是自定义指令和记忆块；记忆在同一会话内沿用首次请求时的快照
             system: composeSystem(
-              SYSTEM_PROMPT,
+              guidance ? `${SYSTEM_PROMPT}\n\n${guidance}` : SYSTEM_PROMPT,
               customInstructions,
               memory,
               locale,

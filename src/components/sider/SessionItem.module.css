@@ -31,12 +31,26 @@
 }
 
 .title {
+  display: flex;
   flex: 1;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  line-height: 18px;
+}
+
+.titleText {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  line-height: 18px;
+}
+
+/* 临时对话标记：跟在标题后面，标题过长时标题先省略，标记始终可见 */
+.temporary {
+  display: inline-flex;
+  flex-shrink: 0;
+  opacity: 0.6;
 }
 
 .action {

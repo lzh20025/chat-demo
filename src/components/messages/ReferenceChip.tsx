@@ -35,10 +35,17 @@ export const ReferenceChip = ({
       resolveMemory({
         memory: message.memory,
         memoryChats: message.memoryChats,
+        memoryIds: message.memoryIds,
         memoryUsed: message.memoryUsed,
         instructions: message.instructions,
       }),
-    [message.memory, message.memoryChats, message.memoryUsed, message.instructions]
+    [
+      message.memory,
+      message.memoryChats,
+      message.memoryIds,
+      message.memoryUsed,
+      message.instructions,
+    ]
   )
   const memoryCount = memory ? countUsedMemory(memory) : 0
   if (!sources.length && !memory) {

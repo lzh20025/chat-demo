@@ -29,6 +29,10 @@ const getUploadRetryId = (messages: Message[], streaming: boolean) => {
 }
 import styles from './MessageList.module.css'
 
+/** 回答前一条提问上挂的记忆改动：改动挂在提问上，重新生成、续写不会丢 */
+const getMemoryChanges = (previous: Message | undefined) =>
+  previous?.role === 'user' ? previous.memoryChanges : undefined
+
 /** 距底部小于该值时视为在底部，流式内容增长时跟随 */
 const STICKY_THRESHOLD = 40
 const EMPTY_VERSIONS: MessageVersions = { ids: [], index: -1 }
@@ -169,6 +173,8 @@ export const MessageList = ({
                   busy={streaming}
                   versions={versions.get(message.id) ?? EMPTY_VERSIONS}
                   onSelectVersion={selectVersion}
+                  // 记忆改动挂在提问上，原样传下去，回答的 memo 不会因此失效
+                  memoryChanges={getMemoryChanges(messages[index - 1])}
                 />
               )
             )}

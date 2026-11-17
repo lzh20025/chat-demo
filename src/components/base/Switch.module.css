@@ -1,0 +1,49 @@
+.switch {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  box-sizing: border-box;
+  width: 40px;
+  height: 24px;
+  padding: 2px;
+  border: none;
+  border-radius: 12px;
+  background-color: var(--dsw-alias-border-l3);
+  cursor: pointer;
+  outline: none;
+  transition: background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+
+  /* 触控区域扩大到 44px 高，不影响布局 */
+  &::before {
+    content: '';
+    position: absolute;
+    inset: -10px -4px;
+  }
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px var(--dsw-alias-button-primary-fill);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.checked {
+  background-color: var(--dsw-alias-brand-primary);
+}
+
+.thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: var(--dsw-static-neutral-bluish-00);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
+  transition: transform var(--ds-transition-duration) var(--ds-ease-in-out);
+
+  .checked > & {
+    transform: translateX(16px);
+  }
+}

@@ -295,6 +295,15 @@
       background-color: var(--dsw-alias-button-ghost-active-hover);
     }
   }
+
+  /* 临时对话发出第一条消息后固定为选中，只保留提示，不响应悬停 */
+  &.selected[aria-disabled='true'] {
+    cursor: default;
+
+    &:hover {
+      background-color: var(--dsw-alias-button-ghost-active-fill);
+    }
+  }
 }
 
 .right {

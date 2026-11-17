@@ -26,17 +26,18 @@ export const countUsedMemory = (memory: UsedMemory): number =>
   (memory.instructions ? 1 : 0)
 
 /**
- * 由回答上保存的记忆块、用户原话、自定义指令和模型报出的编号，得到这条回答实际用到的内容。
+ * 由回答上保存的记忆块、用户原话、编号对应的条目 id、自定义指令和模型报出的编号，得到这条回答实际用到的内容。
  * 什么都没用到时返回 null。
  */
 export const resolveMemory = ({
   memory: block,
   memoryChats: chats,
+  memoryIds: ids,
   memoryUsed: used,
   instructions,
 }: Pick<
   AssistantMessage,
-  'memory' | 'memoryChats' | 'memoryUsed' | 'instructions'
+  'memory' | 'memoryChats' | 'memoryIds' | 'memoryUsed' | 'instructions'
 >): UsedMemory | null => {
   const resolved: UsedMemory = {
     trace: null,
@@ -44,7 +45,7 @@ export const resolveMemory = ({
     instructions: instructions && used?.includes(INSTRUCTIONS_ID) ? instructions : null,
   }
   if (block) {
-    const parsed = parseMemoryBlock(block, chats)
+    const parsed = parseMemoryBlock(block, chats, ids)
     if (!parsed) {
       resolved.raw = block
     } else {

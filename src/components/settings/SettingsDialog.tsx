@@ -15,9 +15,11 @@ import {
   clearHistory,
   exportHistory,
   importHistory,
+  type ImportResult,
 } from '../../services/chat/backup.js'
 import { useIsMobile } from '../../app/viewport.js'
 import { useChatStore } from '../../services/chat/store.js'
+import { useMemory } from '../../services/memory/store.js'
 import { regionCodes, getRegionName, provinces } from '../../services/location.js'
 import { PROVIDERS, getProvider, type ExternalProviderId } from '../../services/providers.js'
 import { fetchProviderModels, useProviderModels } from '../../services/providerModels.js'
@@ -658,11 +660,56 @@ const SettingCell = ({
   )
 }
 
+type ImportOutcome = ImportResult | 'failed' | null
+
+/**
+ * 导入结果的状态行：先说对话，再说记忆；归档里没有对话时只说记忆。
+ * 由几段文案拼成，渲染时按当前语言翻译。记忆导入失败时对话已经导入，单独说明。
+ */
+const importStatus = (outcome: ImportOutcome, t: ReturnType<typeof useTranslate>): Status => {
+  if (outcome === null) {
+    return null
+  }
+  if (outcome === 'failed') {
+    return { key: 'historyImportFailed', error: true }
+  }
+  const { added, skipped, memoryAdded, memoryFailed } = outcome
+  const chats: TranslationMessage =
+    skipped > 0
+      ? { key: 'historyImportedSkipped', params: { count: added, skipped } }
+      : { key: added === 1 ? 'historyImportedOne' : 'historyImported', params: { count: added } }
+  const memoryOnly = added === 0 && skipped === 0
+  if (memoryFailed) {
+    return memoryOnly
+      ? { key: 'historyImportMemoryFailed', error: true }
+      : {
+          key: 'historyImportedWithMemoryFailed',
+          params: { chats: t(chats.key, chats.params) },
+          error: true,
+        }
+  }
+  if (memoryAdded === null) {
+    return chats
+  }
+  const memory: TranslationMessage =
+    memoryAdded === 0
+      ? { key: 'historyImportedMemoryNone' }
+      : memoryAdded === 1
+        ? { key: 'historyImportedMemoryOne' }
+        : { key: 'historyImportedMemory', params: { count: memoryAdded } }
+  return memoryOnly
+    ? memory
+    : {
+        key: 'historyImportedWithMemory',
+        params: { chats: t(chats.key, chats.params), memory: t(memory.key, memory.params) },
+      }
+}
+
 /** 选文件后先确认；确认后才检查文件并执行导入，任何错误都提示导入失败。 */
 const useHistoryImport = () => {
   const [file, setFile] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
-  const [status, setStatus] = useState<Status>(null)
+  const [outcome, setOutcome] = useState<ImportOutcome>(null)
   const importing = useRef(false)
 
   const confirm = async () => {
@@ -672,29 +719,21 @@ const useHistoryImport = () => {
     importing.current = true
     setFile(null)
     setBusy(true)
-    setStatus(null)
+    setOutcome(null)
     try {
-      const { added, skipped } = await importHistory(file)
-      setStatus(
-        skipped > 0
-          ? { key: 'historyImportedSkipped', params: { count: added, skipped } }
-          : {
-              key: added === 1 ? 'historyImportedOne' : 'historyImported',
-              params: { count: added },
-            }
-      )
+      setOutcome(await importHistory(file))
     } catch {
-      setStatus({ key: 'historyImportFailed', error: true })
+      setOutcome('failed')
     } finally {
       importing.current = false
       setBusy(false)
     }
   }
 
-  return { file, busy, status, select: setFile, cancel: () => setFile(null), confirm }
+  return { file, busy, outcome, select: setFile, cancel: () => setFile(null), confirm }
 }
 
-/** 导入 = 合并：把选中文件里本地没有的会话添加进来，已有会话不变。 */
+/** 导入 = 合并：把选中文件里本地没有的会话添加进来，已有会话不变；文件里的记忆同样合并，重复的跳过。 */
 const ImportHistory = ({
   historyImport,
   disabled,
@@ -709,7 +748,7 @@ const ImportHistory = ({
     <SettingCell
       label={t('historyImport')}
       description={t('historyImportDescription')}
-      status={historyImport.status}
+      status={importStatus(historyImport.outcome, t)}
       action={
         <>
           <Button
@@ -741,10 +780,15 @@ const ImportHistory = ({
   )
 }
 
-/** 将全部会话及图片导出为 ZIP 文件并下载 */
+/** 将全部会话、图片和记忆导出为 ZIP 文件并下载；没有对话但有记忆时也可以导出 */
 const ExportHistory = ({ disabled }: { disabled: boolean }) => {
   const t = useTranslate()
-  const empty = useChatStore((state) => state.sessions.length === 0)
+  const noChats = useChatStore((state) => state.sessions.length === 0)
+  // 与导出范围一致：已生效的条目或不再提及的事
+  const noMemory = useMemory(
+    (state) => !state.items.some((item) => item.status === 'saved') && !state.profile?.muted?.length
+  )
+  const empty = noChats && noMemory
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<Status>(null)
 

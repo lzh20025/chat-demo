@@ -34,13 +34,13 @@ The output is written to `dist/`. Deploy it to a static web server or open `dist
 - Upload, paste, or drag and drop attachments; use voice input and read replies aloud. A live audio spectrum appears in the first row of the input area while recording on mobile.
 - Markdown, syntax highlighting, KaTeX math, and Mermaid diagrams.
 - Simplified Chinese and English, light and dark themes, mobile layouts, location settings, and chat history import and export.
-- Memory: summaries of recent chats and a user profile are organized automatically and used when a new chat starts. You can view, edit, delete, or turn it off in Settings. See [Memory](src/services/memory/README.md) (in Chinese).
+- Memory: facts about you are picked up a few seconds after each reply (shown under the reply, with undo) and used in new chats; sensitive things are asked about first. Manage, add, delete or turn it off in Settings; temporary chats neither use nor add to memory. Memory is included in history export. See [Memory](src/services/memory/README.md) (in Chinese).
 
 ## Data and storage
 
 Your API key and settings are stored in the browser's localStorage. Conversations and original attachments are stored in IndexedDB. Local data is isolated by browser profile and site origin. Sending messages, uploading attachments, and using speech features sends the relevant content to the configured API service.
 
-History import and export in Settings use ZIP archives. After confirmation and successful validation, importing merges the archive into local history: conversations not present locally are added, and existing conversations and attachments stay unchanged. Exports include conversations and locally available original images, but exclude API keys, settings, and original non-image attachments. See the [history import/export documentation (Chinese)](src/services/chat/history/README.md) for the archive format and preservation details.
+History import and export in Settings use ZIP archives. After confirmation and successful validation, importing merges the archive into local history: conversations not present locally are added, and existing conversations and attachments stay unchanged. Exports include conversations, locally available original images and memory (remembered items and the do-not-mention list), but exclude API keys, settings, and original non-image attachments; imported memory is merged, skipping duplicates. See the [history import/export documentation (Chinese)](src/services/chat/history/README.md) for the archive format and preservation details.
 
 Settings → Data → Delete all chats clears all local conversations, original attachments, and unsent drafts after confirmation. It stops ongoing replies and returns to a new chat. Your API key and settings are preserved; files already uploaded to the API service are not deleted.
 

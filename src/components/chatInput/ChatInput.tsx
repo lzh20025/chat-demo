@@ -4,11 +4,17 @@ import {
   IconPaperclipOutline16,
   IconSendOutline16,
   IconStopFill16,
+  IconTemporaryOutline14,
   IconThinkOutline14,
 } from '../base/icons.js'
 import { isNativeProvider, setThinking, useSettings } from '../../services/settings.js'
 import { useIsMobile } from '../../app/viewport.js'
-import { sendMessage, stopReply, useChatStore } from '../../services/chat/store.js'
+import {
+  sendMessage,
+  setNewChatTemporary,
+  stopReply,
+  useChatStore,
+} from '../../services/chat/store.js'
 import {
   addDraftFiles,
   EMPTY_DRAFT,
@@ -33,7 +39,18 @@ import { Spectrum } from './Spectrum.js'
 import { useTranslate } from '../../i18n/index.js'
 import styles from './ChatInput.module.css'
 
-/** 输入框：自适应高度的文本框 + 文件 + 深度思考与智能搜索开关 + 语音输入 + 发送 / 停止 */
+/** 打开的会话是否为临时对话：会话已加载时看会话本身，否则看列表里的元数据 */
+const isTemporarySession = (
+  state: ReturnType<typeof useChatStore.getState>,
+  sessionId: string
+): boolean => {
+  const session = Object.hasOwn(state.sessionCache, sessionId)
+    ? state.sessionCache[sessionId]
+    : state.sessions.find((summary) => summary.id === sessionId)
+  return Boolean(session?.temporary)
+}
+
+/** 输入框：自适应高度的文本框 + 文件 + 深度思考与临时对话开关 + 语音输入 + 发送 / 停止 */
 export const ChatInput = memo(function ChatInput({ sessionId }: { sessionId: string | null }) {
   // 切换目标时释放录音、转写和 DOM 状态；文字与附件由草稿服务保留。
   return <Input key={sessionId === null ? 'new' : `session:${sessionId}`} sessionId={sessionId} />
@@ -49,6 +66,10 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
     (state) => sessionId !== null && Object.hasOwn(state.streaming, sessionId)
   )
   const thinking = useSettings((state) => state.thinking)
+  // 新对话页可以切换临时对话；发出第一条消息后随会话固定，只显示、不能再切换
+  const temporary = useChatStore((state) =>
+    sessionId === null ? state.newChatTemporary : isTemporarySession(state, sessionId)
+  )
   // 语音和附件走 DeepSeek 的接口，其他服务商下隐藏
   const native = useSettings(isNativeProvider)
   const importingHistory = useChatStore((state) => state.importingHistory)
@@ -57,6 +78,8 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const togglesRef = useRef<HTMLDivElement>(null)
 
+  // 开关放不下时收起文字。开关区的宽度只随父级变化，ResizeObserver 感知不到内容变化：
+  // 文案或开关个数（临时对话开关在已有会话里只对临时对话显示）变了要重新量
   useLayoutEffect(() => {
     const toggles = togglesRef.current
     if (!toggles) {
@@ -72,7 +95,7 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
     const observer = new ResizeObserver(updateLabels)
     observer.observe(toggles)
     return () => observer.disconnect()
-  }, [t])
+  }, [t, temporary])
 
   const acceptFiles = (files: File[]) => {
     if (
@@ -205,7 +228,7 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
         </div>
       </div>
       <div className={styles.functionRow}>
-        {/* 深度思考开关，tooltip 在按钮上方；搜索由模型按需决定 */}
+        {/* 深度思考与临时对话开关，tooltip 在按钮上方；搜索由模型按需决定。放不下时只显示图标 */}
         <div ref={togglesRef} className={styles.toggles}>
           <Tooltip content={t('deactivatedThinkTooltip')}>
             <button
@@ -219,6 +242,30 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
               <span className={styles.toggleLabel}>{t('thinkingSwitch')}</span>
             </button>
           </Tooltip>
+          {/* 已有会话只在是临时对话时显示，保持选中且不可切换；用 aria-disabled 而不是 disabled，提示仍能出现 */}
+          {sessionId === null || temporary ? (
+            <Tooltip
+              content={t(
+                sessionId === null ? 'temporaryChatTooltip' : 'temporaryChatActiveTooltip'
+              )}
+            >
+              <button
+                type="button"
+                className={clsx(styles.toggle, temporary && styles.selected)}
+                aria-label={t('temporaryChat')}
+                aria-pressed={temporary}
+                aria-disabled={sessionId === null ? undefined : true}
+                onClick={() => {
+                  if (sessionId === null) {
+                    setNewChatTemporary(!temporary)
+                  }
+                }}
+              >
+                <IconTemporaryOutline14 />
+                <span className={styles.toggleLabel}>{t('temporaryChat')}</span>
+              </button>
+            </Tooltip>
+          ) : null}
         </div>
         <div className={styles.right}>
           {native ? (

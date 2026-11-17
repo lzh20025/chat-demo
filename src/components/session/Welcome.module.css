@@ -16,16 +16,39 @@
   padding: 0 32px 64px;
 }
 
+/* 问候语和临时对话说明作为一组，移动端一起居中在输入框上方的空白里 */
+.heading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 21px;
+}
+
 .greeting {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 21px;
   font-size: 24px;
   line-height: 32px;
   font-weight: 600;
   text-align: center;
   color: var(--dsw-alias-label-primary);
+}
+
+.temporaryHint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+  color: var(--dsw-alias-label-tertiary);
+
+  > svg {
+    flex-shrink: 0;
+  }
 }
 
 @media (max-width: 439px) {
@@ -50,7 +73,7 @@
     padding: 0 16px env(safe-area-inset-bottom);
   }
 
-  .greeting {
+  .heading {
     flex-shrink: 0;
     margin: auto 0;
   }

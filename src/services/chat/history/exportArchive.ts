@@ -1,8 +1,9 @@
+import type { MemoryExport } from '../../memory/items.js'
 import * as db from '../db.js'
 import type { Session } from '../types.js'
 import { EXPORT_FORMAT_VERSION, type Manifest, type SessionIndexEntry } from './format.js'
 import { INDEX_PATH, MANIFEST_PATH, imagePath, sessionPath } from './paths.js'
-import { toIndexEntry, toSessionFile } from './toArchive.js'
+import { toIndexEntry, toMemoryArchive, toSessionFile } from './toArchive.js'
 import { writeArchive } from './zipWriter.js'
 
 const json = (value: unknown) => new Blob([JSON.stringify(value)], { type: 'application/json' })
@@ -10,11 +11,17 @@ const json = (value: unknown) => new Blob([JSON.stringify(value)], { type: 'appl
 /**
  * 按导出格式生成 ZIP：manifest → 全部会话 JSON → index → 全部图片。没有账号信息，不写 user.json。
  * 只写出本地有原件的图片，每个会话目录各写一份；其他附件只有元数据。
+ * 记忆写进 manifest 的扩展字段，不新增条目：导入器遇到不认识的条目会整包失败。
+ * 没有会话时也是合法归档（index 为空），可以只导出记忆。
  */
 export const exportArchive = async (
-  sessions: Iterable<Session> | AsyncIterable<Session>
+  sessions: Iterable<Session> | AsyncIterable<Session>,
+  memory?: MemoryExport | null
 ): Promise<Blob> => {
-  const manifest: Manifest = { export_format_version: EXPORT_FORMAT_VERSION }
+  const manifest: Manifest = {
+    export_format_version: EXPORT_FORMAT_VERSION,
+    ...(memory ? { chat_demo_memory: toMemoryArchive(memory) } : {}),
+  }
   const entries = [{ name: MANIFEST_PATH, blob: json(manifest) }]
   const imageEntries: { name: string; blob: Blob }[] = []
   const index: SessionIndexEntry[] = []

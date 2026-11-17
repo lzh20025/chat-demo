@@ -546,3 +546,29 @@ export const IconInfoOutline16 = () => (
     <circle cx={8} cy={5.1} r={0.8} fill="currentColor" />
   </svg>
 )
+
+/**
+ * 临时对话：虚线圆圈里一个时钟，表示用过即走、不留进记忆。
+ * 按 14px 绘制，线条粗细与 IconThinkOutline14 相近；虚线用 pathLength 均分为 12 段。
+ */
+export const IconTemporaryOutline14 = () => (
+  <svg width={14} height={14} viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle
+      cx={7}
+      cy={7}
+      r={5.75}
+      pathLength={24}
+      stroke="currentColor"
+      strokeWidth={1.15}
+      strokeDasharray="1.2 0.8"
+      strokeDashoffset={0.6}
+    />
+    <path
+      d="M7 4.4V7l1.75 1.1"
+      stroke="currentColor"
+      strokeWidth={1.15}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+)
