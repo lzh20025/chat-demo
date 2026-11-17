@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { TtsVoice } from './api/speech.js'
+import type { ChatModel, Effort } from './api/types.js'
 import { normalizeLocation, type UserLocation } from './location.js'
 
 export type Locale = 'zh-CN' | 'en-US'
@@ -7,13 +8,18 @@ export type Locale = 'zh-CN' | 'en-US'
 /** 主题偏好；默认跟随系统 */
 export type ThemePreference = 'light' | 'dark' | 'system'
 
-/** 本机设置，存 localStorage：API Key、语言、主题、位置、朗读音色、侧边栏收起状态、自定义指令 */
+/** 本机设置，存 localStorage：API Key、语言、主题、位置、朗读音色、模型、思考强度、深度思考开关、侧边栏收起状态、自定义指令 */
 type Settings = {
   apiKey: string | null
   locale: Locale
   themePreference: ThemePreference
   location: UserLocation | null
   ttsVoice: TtsVoice
+  /** 新回复使用的模型 */
+  model: ChatModel
+  /** 新回复的思考强度，仅深度思考开启时生效 */
+  effort: Effort
+  thinking: boolean
   siderCollapsed: boolean
   /** 记忆开关；关闭后不注入、不生成，已保存的记忆保留 */
   memoryEnabled: boolean
@@ -27,6 +33,9 @@ const KEYS = {
   location: 'chat-demo:location',
   themePreference: 'chat-demo:theme-preference',
   ttsVoice: 'chat-demo:tts-voice',
+  model: 'chat-demo:model',
+  effort: 'chat-demo:effort',
+  thinking: 'chat-demo:thinking',
   siderCollapsed: 'chat-demo:sider-collapsed',
   memoryEnabled: 'chat-demo:memory-enabled',
   customInstructions: 'chat-demo:custom-instructions',
@@ -89,12 +98,25 @@ const initialThemePreference = (): ThemePreference => {
 /** 未保存过时使用服务端默认音色 stella（海星） */
 const initialTtsVoice = (): TtsVoice => (read(KEYS.ttsVoice) === 'tide' ? 'tide' : 'stella')
 
+/** 未保存过时使用 deepseek-flash */
+const initialModel = (): ChatModel =>
+  read(KEYS.model) === 'deepseek-v4-pro' ? 'deepseek-v4-pro' : 'deepseek-flash'
+
+/** 未保存过时使用服务端默认强度 high */
+const initialEffort = (): Effort => {
+  const saved = read(KEYS.effort)
+  return saved === 'low' || saved === 'max' ? saved : 'high'
+}
+
 export const useSettings = create<Settings>(() => ({
   apiKey: read(KEYS.apiKey),
   locale: initialLocale(),
   location: initialLocation(),
   themePreference: initialThemePreference(),
   ttsVoice: initialTtsVoice(),
+  model: initialModel(),
+  effort: initialEffort(),
+  thinking: read(KEYS.thinking) === 'true',
   siderCollapsed: read(KEYS.siderCollapsed) === 'true',
   // 默认开启；只有明确关闭过才为 false
   memoryEnabled: read(KEYS.memoryEnabled) !== 'false',
@@ -120,6 +142,21 @@ export const setThemePreference = (themePreference: ThemePreference) => {
 export const setTtsVoice = (ttsVoice: TtsVoice) => {
   write(KEYS.ttsVoice, ttsVoice)
   useSettings.setState({ ttsVoice })
+}
+
+export const setModel = (model: ChatModel) => {
+  write(KEYS.model, model)
+  useSettings.setState({ model })
+}
+
+export const setEffort = (effort: Effort) => {
+  write(KEYS.effort, effort)
+  useSettings.setState({ effort })
+}
+
+export const setThinking = (thinking: boolean) => {
+  write(KEYS.thinking, String(thinking))
+  useSettings.setState({ thinking })
 }
 
 export const setApiKey = (apiKey: string | null) => {

@@ -21,8 +21,10 @@ import { useChatStore } from '../../services/chat/store.js'
 import { regionCodes, getRegionName, provinces } from '../../services/location.js'
 import {
   isChineseBrowser,
+  setEffort,
   setLocale,
   setLocation,
+  setModel,
   setThemePreference,
   setTtsVoice,
   useSettings,
@@ -40,7 +42,7 @@ import { closeSettings, useSettingsDialog, type SettingsSection } from './settin
 import styles from './Settings.module.css'
 
 /**
- * 设置弹窗：分「通用设置」（主题、语言、朗读音色、位置、自定义指令）、「记忆」（档案与近期对话摘要）与「数据管理」（API Key、导入、导出、删除）。
+ * 设置弹窗：分「通用设置」（模型、思考强度、主题、语言、朗读音色、位置、自定义指令）、「记忆」（档案与近期对话摘要）与「数据管理」（API Key、导入、导出、删除）。
  * 桌面端为居中弹窗、左侧导航；移动端为底部弹层、导航横排在内容上方
  */
 export const SettingsDialog = () => {
@@ -100,6 +102,8 @@ const SettingsContent = () => {
         <div role="tabpanel" className={styles.content}>
           {section === 'general' ? (
             <>
+              <ModelSetting />
+              <EffortSetting />
               <ThemeSetting />
               <LocaleSetting />
               <TtsVoiceSetting />
@@ -299,6 +303,53 @@ const LocaleSetting = () => {
 }
 
 /** 朗读音色：stella（海星，女声）/ tide（暗潮，男声） */
+const ModelSetting = () => {
+  const t = useTranslate()
+  const model = useSettings((state) => state.model)
+  return (
+    <SettingCell
+      label={t('settingsModel')}
+      description={t('settingsModelDescription')}
+      status={null}
+      action={
+        <Select
+          ariaLabel={t('settingsModel')}
+          value={model}
+          options={[
+            { value: 'deepseek-flash', label: 'DeepSeek V4.1 Flash' },
+            { value: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
+          ]}
+          onChange={setModel}
+        />
+      }
+    />
+  )
+}
+
+const EffortSetting = () => {
+  const t = useTranslate()
+  const effort = useSettings((state) => state.effort)
+  return (
+    <SettingCell
+      label={t('settingsEffort')}
+      description={t('settingsEffortDescription')}
+      status={null}
+      action={
+        <Select
+          ariaLabel={t('settingsEffort')}
+          value={effort}
+          options={[
+            { value: 'low', label: t('settingsEffortLow') },
+            { value: 'high', label: t('settingsEffortHigh') },
+            { value: 'max', label: t('settingsEffortMax') },
+          ]}
+          onChange={setEffort}
+        />
+      }
+    />
+  )
+}
+
 const TtsVoiceSetting = () => {
   const t = useTranslate()
   const ttsVoice = useSettings((state) => state.ttsVoice)

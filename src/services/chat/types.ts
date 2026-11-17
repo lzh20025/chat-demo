@@ -2,6 +2,7 @@ import type { TranslationMessage } from '../../i18n/index.js'
 import type { ApiErrorKind } from '../api/client.js'
 import type {
   ChatModel,
+  Effort,
   MessageUsage,
   ServerToolBlock,
   StopDetails,
@@ -87,8 +88,10 @@ export type AssistantMessage = MessageBranch & {
   createdAt: number
   /** 未记录模型时为 null，续写使用当前默认模型。 */
   model: ChatModel | null
-  /** 旧版开关记录的深度思考状态；缺省表示由模型自行决定是否思考 */
+  /** 请求时是否开启深度思考 */
   thinking?: boolean
+  /** 请求时的思考强度；未记录时不传，服务端按默认强度处理 */
+  effort?: Effort
   /** 旧版开关记录的搜索状态；缺省表示声明 deepseek_web_search，由模型按需搜索 */
   search?: boolean
   /** 本轮请求的系统信息快照；各回答版本独立保存，续写沿用。历史消息中缺省的快照保持为空。 */

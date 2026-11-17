@@ -40,7 +40,7 @@ import {
   type UserMessage,
 } from './types.js'
 
-/** deepseek-flash 同时支持深度思考与图片输入 */
+/** 未记录模型的历史回复续写时使用的模型 */
 const MODEL: ChatModel = 'deepseek-flash'
 /** 所有生成请求统一携带的助手身份说明 */
 const SYSTEM_PROMPT = '该助手为DeepSeek，由深度求索公司创造。'
@@ -261,17 +261,16 @@ export const bindChatPersistence = () => {
   }
 }
 
-/** 旧版回复沿用记录的开关；未记录时由模型自行决定是否思考。 */
-const thinkingType = (thinking: boolean | undefined) =>
-  thinking === undefined ? 'adaptive' : thinking ? 'enabled' : 'disabled'
-
-/** 创建回复：不记录思考与搜索开关，两者都交给模型按问题决定。 */
+/** 按当前设置创建回复：记录模型、深度思考开关与思考强度；搜索不记录，由模型按需决定。 */
 const createReply = (): AssistantMessage => {
+  const { model, thinking, effort } = useSettings.getState()
   return {
     id: createId(),
     role: 'assistant',
     createdAt: Date.now(),
-    model: MODEL,
+    model,
+    thinking,
+    effort,
     prefix: true,
     status: 'pending',
     blocks: [],
@@ -721,8 +720,9 @@ export const continueReply = (sessionId: string, messageId: string) => {
   }
   const reply: AssistantMessage = {
     ...previous,
-    // 未记录模型的回复续写时使用默认模型；思考与搜索沿用原记录，缺省时由模型决定。
+    // 未记录请求配置的回复，续写时使用默认模型和当前思考开关；搜索缺省时由模型决定。
     model: previous.model ?? MODEL,
+    thinking: previous.thinking ?? useSettings.getState().thinking,
     status: 'pending',
     stopReason: undefined,
     stopDetails: undefined,
@@ -1017,8 +1017,7 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
           prepared.history,
           prepared.question,
           prepared.prefix,
-          // 模型自行决定思考时，续写同样回传本轮已有的思考
-          initial.thinking ?? true,
+          initial.thinking ?? false,
           latestReminder
         )
         const events = streamMessage(
@@ -1034,7 +1033,10 @@ const streamReply = async (sessionId: string, initial: AssistantMessage, request
               previousInstructions
             ),
             messages,
-            thinking: { type: thinkingType(initial.thinking) },
+            thinking: { type: initial.thinking ? 'enabled' : 'disabled' },
+            ...(initial.thinking && initial.effort
+              ? { output_config: { effort: initial.effort } }
+              : {}),
             safety_check: SAFETY_CHECK,
             tools: serverTools(initial.search ?? true),
             ...(titleRequests.has(controller) ? { title: { enabled: true } } : {}),

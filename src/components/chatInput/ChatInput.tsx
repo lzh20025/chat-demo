@@ -1,7 +1,12 @@
 import clsx from 'clsx'
-import { memo, useCallback, useEffect, useRef } from 'react'
-import { IconPaperclipOutline16, IconSendOutline16, IconStopFill16 } from '../base/icons.js'
-import { useSettings } from '../../services/settings.js'
+import { memo, useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import {
+  IconPaperclipOutline16,
+  IconSendOutline16,
+  IconStopFill16,
+  IconThinkOutline14,
+} from '../base/icons.js'
+import { setThinking, useSettings } from '../../services/settings.js'
 import { useIsMobile } from '../../app/viewport.js'
 import { sendMessage, stopReply, useChatStore } from '../../services/chat/store.js'
 import {
@@ -16,6 +21,7 @@ import {
 } from '../../services/chat/drafts.js'
 import { stopReadAloud } from '../../services/speech/readAloud.js'
 import { IconButton } from '../base/IconButton.js'
+import { Tooltip } from '../base/Tooltip.js'
 import { ensureApiKey } from '../settings/settingsDialogState.js'
 import { DragMask, useFileDrop } from './DragMask.js'
 import { showToast } from '../base/toastState.js'
@@ -42,10 +48,29 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
   const streaming = useChatStore(
     (state) => sessionId !== null && Object.hasOwn(state.streaming, sessionId)
   )
+  const thinking = useSettings((state) => state.thinking)
   const importingHistory = useChatStore((state) => state.importingHistory)
   const isMobile = useIsMobile()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const togglesRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    const toggles = togglesRef.current
+    if (!toggles) {
+      return
+    }
+
+    const updateLabels = () => {
+      toggles.classList.remove(styles.collapsedToggles)
+      toggles.classList.toggle(styles.collapsedToggles, toggles.scrollWidth > toggles.clientWidth)
+    }
+
+    updateLabels()
+    const observer = new ResizeObserver(updateLabels)
+    observer.observe(toggles)
+    return () => observer.disconnect()
+  }, [t])
 
   const acceptFiles = (files: File[]) => {
     if (files.length === 0 || useChatStore.getState().importingHistory || !ensureApiKey()) {
@@ -173,6 +198,21 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
         </div>
       </div>
       <div className={styles.functionRow}>
+        {/* 深度思考开关，tooltip 在按钮上方；搜索由模型按需决定 */}
+        <div ref={togglesRef} className={styles.toggles}>
+          <Tooltip content={t('deactivatedThinkTooltip')}>
+            <button
+              type="button"
+              className={clsx(styles.toggle, thinking && styles.selected)}
+              aria-label={t('thinkingSwitch')}
+              aria-pressed={thinking}
+              onClick={() => setThinking(!thinking)}
+            >
+              <IconThinkOutline14 />
+              <span className={styles.toggleLabel}>{t('thinkingSwitch')}</span>
+            </button>
+          </Tooltip>
+        </div>
         <div className={styles.right}>
           <VoiceButton
             status={voice.status}
