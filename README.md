@@ -35,12 +35,15 @@ The output is written to `dist/`. Deploy it to a static web server or open `dist
 - Markdown, syntax highlighting, KaTeX math, and Mermaid diagrams.
 - Simplified Chinese and English, light and dark themes, mobile layouts, location settings, and chat history import and export.
 - Memory: facts about you are picked up a few seconds after each reply (shown under the reply, with undo) and used in new chats; sensitive things are asked about first. Manage, add, delete or turn it off in Settings; temporary chats neither use nor add to memory. Memory is included in history export. See [Memory](src/services/memory/README.md) (in Chinese).
+- Cloud sync: optionally sync chats, memory and preferences across devices through your own Google Drive. There is no app account; you sign in to Google, and API keys never leave the device. See [Cloud sync](src/services/sync/README.md) (in Chinese).
 
 ## Data and storage
 
 Your API key and settings are stored in the browser's localStorage. Conversations and original attachments are stored in IndexedDB. Local data is isolated by browser profile and site origin. Sending messages, uploading attachments, and using speech features sends the relevant content to the configured API service.
 
 History import and export in Settings use ZIP archives. After confirmation and successful validation, importing merges the archive into local history: conversations not present locally are added, and existing conversations and attachments stay unchanged. Exports include conversations, locally available original images and memory (remembered items and the do-not-mention list), but exclude API keys, settings, and original non-image attachments; imported memory is merged, skipping duplicates. See the [history import/export documentation (Chinese)](src/services/chat/history/README.md) for the archive format and preservation details.
+
+Settings → Data → Cloud sync is off by default. When on, chats, memory and preferences (language, theme, model, effort, voice, memory switch, custom instructions, per-provider model and base URL) are stored in a hidden app folder in your Google Drive (`drive.appdata` scope: the app cannot see your other files) and merged automatically when two devices change the same thing. API keys, original attachments and temporary chats are never uploaded. It needs a Google OAuth client ID at build time: create a "Web application" OAuth client in Google Cloud Console, add your site origin (`http://localhost:8090` for development) to Authorized JavaScript origins, enable the Drive API, and build with `GOOGLE_CLIENT_ID=<id>`. Without it the setting shows as not configured. Access tokens last about an hour and the browser cannot refresh them silently in every case, so you may be asked to reconnect.
 
 Settings → Data → Delete all chats clears all local conversations, original attachments, and unsent drafts after confirmation. It stops ongoing replies and returns to a new chat. Your API key and settings are preserved; files already uploaded to the API service are not deleted.
 
@@ -52,11 +55,12 @@ Settings → Data → Delete all chats clears all local conversations, original 
 | `pnpm build`  | Build into `dist/`           |
 | `pnpm type`   | Run TypeScript type checks   |
 | `pnpm lint`   | Lint with oxlint             |
+| `pnpm test`   | Run unit tests with vitest   |
 | `pnpm format` | Format with oxfmt            |
 
 Settings → Data lets you switch the provider to Anthropic, OpenAI, Gemini (through its OpenAI-compatible endpoint) or any OpenAI-compatible service, each with its own API key, base URL and model. These providers get plain chat with DeepThink and effort; web search, link reading, attachments, voice, titles and memory work only with DeepSeek.
 
-[rspack.config.ts](rspack.config.ts) uses `https://api.deepseek.com` by default. Use `createConfig({ apiOrigin, devServer })` to customize the API origin and development server proxy.
+[rspack.config.ts](rspack.config.ts) uses `https://api.deepseek.com` by default. Use `createConfig({ apiOrigin, googleClientId, devServer })` to customize the API origin, the Google OAuth client ID for cloud sync (defaults to the `GOOGLE_CLIENT_ID` environment variable) and the development server proxy.
 
 Chat uses `deepseek-flash` by default through Anthropic-compatible Messages / Files APIs. Speech features use ASR / TTS endpoints. Requests include extensions for search, link reading, titles, and `latest_reminder`, so the configured service must support the corresponding capabilities. Supported attachment formats are determined by server-side validation.
 
