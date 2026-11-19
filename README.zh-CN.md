@@ -2,18 +2,18 @@
 
 [English](README.md) | 简体中文
 
-基于 DeepSeek API 的静态聊天示例。无需应用后端，浏览器直接请求配置的 API 服务。
+基于 DeepSeek API 的纯前端聊天应用。应用没有自己的后端，浏览器直接连接所配置的 API 服务。
 
-> 本 fork 是用于学习与工程实践的开源示例，基于 [deepseek-ai/chat-demo](https://github.com/deepseek-ai/chat-demo) 修改，并非 DeepSeek 官方产品，按“现状”提供，不附带任何形式的担保。
+> 本项目是用于学习与工程实践的开源示例，基于 [deepseek-ai/chat-demo](https://github.com/deepseek-ai/chat-demo) 修改，并非 DeepSeek 官方产品，按“现状”提供，不附带任何形式的担保。
 
-点击 [在线体验](https://deepseek-ai.github.io/chat-demo/) 即可使用，也可以前往 [Releases](https://github.com/deepseek-ai/deepseek-chat-demo/releases) 下载压缩包，解压后双击 `index.html` 在本地使用，无需安装或构建。首次使用时，请在设置中填写 API Key。
+可在 [GitHub Pages](https://lzh20025.github.io/chat-demo/) 在线体验。应用不需要单独部署后端；也可以自行构建并托管静态文件。
 
 ## 运行
 
-准备 Node.js 22.12+ 和 pnpm：
+准备 Node.js 24 和 pnpm（GitHub Actions 使用 pnpm 12.6.0）：
 
 ```sh
-git clone https://github.com/deepseek-ai/chat-demo.git
+git clone https://github.com/lzh20025/chat-demo.git
 cd chat-demo
 pnpm install
 pnpm dev
@@ -27,27 +27,27 @@ pnpm dev
 pnpm build
 ```
 
-产物位于 `dist/`，可部署到静态服务器，也可直接打开 `dist/index.html`。直接打开时，浏览器和 API 服务需允许 `file://` 页面的存储与跨域请求。
+产物位于 `dist/`，可部署到静态服务器，也可直接打开 `dist/index.html`。直接打开时，浏览器和 API 服务需允许 `file://` 页面的存储与跨域请求；Google 登录不支��� `file://` 页面。
 
 ## 功能
 
 - 多会话、自动标题、重命名与删除；编辑提问、重新生成和切换消息分支。
-- 流式回答、深度思考、智能搜索、链接阅读与来源引用；支持停止和符合条件的继续生成。
-- 附件上传、粘贴与拖拽，语音输入和回复朗读；移动端录音时输入框首行显示实时频谱。
+- 流式回答、深度思考、停止生成，以及符合条件时继续生成。
+- DeepSeek 服务商支持智能搜索、链接阅读与来源引用、附件、语音输入和回复朗读；移动端录音时输入框首行显示实时频谱。
 - Markdown、代码高亮、KaTeX 公式和 Mermaid 图表。
 - 简体中文与英文、浅色与深色主题、移动端布局、位置设置、历史导入导出。
-- 记忆：回答后几秒内记下关于你的事（回答下方提示、可撤销），新对话开始时自动参考；敏感内容先问再记。可在设置中查看、添加、删除和关闭；临时对话不参考也不写入记忆；记忆随历史一起导出。说明见[记忆](src/services/memory/README.md)。
-- 云端同步：可选，通过你自己的 Google Drive 在设备间同步会话、记忆和偏好设置。应用没有自己的账号，登录的是 Google 账号；API Key 不会离开本机。说明见[云端同步](src/services/sync/README.md)。
+- 记忆：默认开启。回答后整理近期对话并提取记忆，相关改动会显示在回答下方并可撤销；敏感内容需确认。可在设置中查看、添加、编辑、删除记忆或关闭记忆。
+- 云端同步：默认关闭，可选使用自己的 Google Drive 在设备间同步会话、记忆和部分偏好设置。应用没有自己的账号系统；API Key、附件原件和临时对话不会同步。
 
-## 数据
+## 数据与隐私
 
-API Key 和设置保存在浏览器 localStorage，会话及附件原件保存在 IndexedDB，本地数据按浏览器用户配置和站点源（origin）隔离。发送对话、上传附件和使用语音功能时，相应内容会提交给配置的 API 服务。
+API Key 和设置保存在浏览器 `localStorage`；会话、记忆和附件原件保存在 IndexedDB。本地数据按浏览器用户配置和站点源（origin）隔离。发送对话、上传附件、使用语音功能或整理记忆时，相关内容会由浏览器直接发送到当前配置的 AI 服务，并由该服务按其隐私政策处理。
 
-设置中的历史导入导出使用 ZIP 格式。导入会在确认并校验成功后与本地会话合并：只添加本地没有的会话，已有会话和附件保持不变；导出包含会话、本地可用的图片原件和记忆（记住的事与不再提及的清单），不包含 API Key、设置或非图片附件原件；导入的记忆与本地合并，跳过重复的内容。格式与保留范围见[历史导入导出](src/services/chat/history/README.md)。
+历史导入导出使用 ZIP 格式。导入会在确认并校验成功后与本地会话合并，只添加本地没有的会话；已有会话和附件不被覆盖。导出包含会话及可导出的图片原件和记忆，但不包含 API Key 或应用设置；非图片附件原件不会完整导出。
 
-设置 → 数据管理 → 云端同步默认关闭。开启后，会话、记忆和偏好设置（语言、主题、模型、思考强度、朗读音色、记忆开关、自定义指令、各服务商的模型与接口地址）保存在你的 Google Drive 里应用专属的隐藏目录中（`drive.appdata` 权限：应用看不到你的其他文件），两台设备改了同一处时自动合并。API Key、附件原件和临时对话不会上传。构建时需要提供 Google OAuth Client ID：在 Google Cloud Console 创建「Web 应用」类型的 OAuth Client，把站点 origin（本地开发为 `http://localhost:8090`）加入 Authorized JavaScript origins，启用 Drive API，然后用 `GOOGLE_CLIENT_ID=<id>` 构建；没有配置时设置里显示为未配置。访问令牌约一小时过期，浏览器不一定能静默续期，届时需要点一次「重新连接」。
+设置 → 数据管理 → 云端同步默认关闭。开启后，同步会话、记忆和偏好设置（如语言、主题、模型、思考强度、朗读音色、记忆开关、自定义指令及各服务商的模型与接口地址）。API Key、附件原件、临时对话和部分仅保存在本机的设置不会同步。数据在浏览器与 Google Drive 之间直接传输。
 
-设置 → 数据管理 → 删除所有对话，会在确认后清空全部本地会话、附件原件和未发送的草稿，停止正在生成的回复并回到新对话。API Key 和其他设置保留，已上传到 API 服务的文件不受影响。
+设置 → 数据管理 → 删除所有对话，会在确认后清空本地会话、附件原件和未发送的草稿，停止正在生成的回复并回到新对话；记忆条目和 API Key 等设置不会因此删除。更多信息见[隐私政策](https://lzh20025.github.io/chat-demo/privacy.html)。
 
 ## 开发
 
@@ -60,11 +60,11 @@ API Key 和设置保存在浏览器 localStorage，会话及附件原件保存�
 | `pnpm test`   | vitest 单元测试     |
 | `pnpm format` | oxfmt 格式化        |
 
-在「设置 → 数据管理」中可以把服务商切换为 Anthropic、OpenAI、Gemini（通过其 OpenAI 兼容接口）或任意 OpenAI 兼容服务，各自保存 API Key、接口地址和模型。这些服务商只提供基础对话（含深度思考与思考强度）；联网搜索、链接阅读、附件、语音、标题和记忆仅在使用 DeepSeek 时可用。
+设置 → 数据管理中可以选择 DeepSeek、Anthropic、OpenAI、Gemini 或自定义 OpenAI 兼容服务。DeepSeek 是默认服务商；其他服务商提供基础对话（含深度思考），不支持本应用的搜索、链接阅读、附件、语音、标题和记忆扩展功能。各服务商分别配置 API Key、接口地址和模型。
 
-[rspack.config.ts](rspack.config.ts) 默认连接 `https://api.deepseek.com`。`createConfig({ apiOrigin, googleClientId, devServer })` 支持自定义 API 地址、云端同步用的 Google OAuth Client ID（默认读环境变量 `GOOGLE_CLIENT_ID`）和开发服务器代理。
+[rspack.config.ts](rspack.config.ts) 默认连接 `https://api.deepseek.com`。`createConfig({ apiOrigin, googleClientId, devServer })` 可自定义 API 地址、Google OAuth Client ID 和开发服务器配置。也可复制 `.env.example` 为 `.env.local` 并设置 `GOOGLE_CLIENT_ID`；该 Client ID 是公开标识，不是密钥。构建会将隐私政策页复制到 `dist/privacy.html`。
 
-聊天默认使用 `deepseek-flash`，通过 Anthropic 兼容的 Messages / Files API 通信；语音使用 ASR / TTS 接口。请求使用搜索、链接阅读、标题和 `latest_reminder` 等扩展，接入服务需支持相应能力。附件实际支持的格式以服务端校验为准。
+DeepSeek 默认使用 `deepseek-flash`，通过 Anthropic 兼容的 Messages / Files API 通信。语音使用 ASR / TTS 接口；搜索、链接阅读、标题和记忆等功能依赖 DeepSeek 的扩展接口。
 
 ```text
 src/
@@ -74,8 +74,10 @@ src/
   services/
     api/               API 请求、SSE 与协议类型
     chat/              会话、消息分支、本地存储与历史导入导出
+    memory/            记忆提取、整理与管理
     markdown/          Markdown 解析、代码高亮与图表
     speech/            录音与朗读
+    sync/              云端同步与 Google Drive
   utils/               通用工具
 ```
 
