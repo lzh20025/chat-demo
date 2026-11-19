@@ -32,13 +32,3 @@ export const useTranslate = () => useSettings((state) => translators[state.local
 
 export const translate = (key: TranslationKey, params?: TranslationParams): string =>
   translators[useSettings.getState().locale](key, params)
-
-/** 页面的 lang 跟随界面语言（含其他设备同步来的改动）：读屏、断字和字体选择都依赖它。启动时调用一次。 */
-export const setupDocumentLanguage = () => {
-  document.documentElement.lang = useSettings.getState().locale
-  useSettings.subscribe((state, previous) => {
-    if (state.locale !== previous.locale) {
-      document.documentElement.lang = state.locale
-    }
-  })
-}
