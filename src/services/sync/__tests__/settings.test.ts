@@ -65,6 +65,25 @@ describe('synced settings', () => {
     expect(settings.syncedSettingsModifiedAt()).toBe(before + 500)
   })
 
+  it('does not treat an API-key-only change as a synced settings change', async () => {
+    const settings = await load()
+    let notified = 0
+    const stop = settings.onSyncedSettingsChange(() => (notified += 1))
+    const before = settings.syncedSettingsModifiedAt()
+
+    settings.setProviderSettings('anthropic', { apiKey: 'sk-ant-rotated' })
+    settings.setProviderSettings('gemini', { apiKey: 'sk-gemini-new' })
+    expect(settings.syncedSettingsModifiedAt()).toBe(before)
+    expect(notified).toBe(0)
+    expect(settings.useSettings.getState().providers.anthropic?.apiKey).toBe('sk-ant-rotated')
+
+    // 同一家的模型变了才算
+    settings.setProviderSettings('gemini', { model: 'gemini-test' })
+    expect(settings.syncedSettingsModifiedAt()).toBeGreaterThan(before)
+    expect(notified).toBe(1)
+    stop()
+  })
+
   it('bumps the modified time only for synced settings', async () => {
     const settings = await load()
     const before = settings.syncedSettingsModifiedAt()

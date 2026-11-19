@@ -108,6 +108,7 @@ const syncCollection = async (
 
   const added: Tombstones = {}
   const cleared = new Set<string>()
+  const expiry = now() - TOMBSTONE_TTL
 
   const readRemote = async (key: string) => {
     const name = fileName(collection.id, key)
@@ -134,12 +135,14 @@ const syncCollection = async (
     return backend.write(name, JSON.stringify(envelope))
   }
 
+  /**
+   * 删除远端文件并把这条记入待写的删除记录。本地的删除标记不在这里清：
+   * 删除记录要到本轮末尾才写入，写入可能失败；等之后某一轮在远端的删除记录里读到这条再清（见 plan.ts 的 forget）。
+   */
   const removeRemote = async (action: Extract<SyncAction, { remoteRev: string }>) => {
     const name = fileName(collection.id, action.key)
     await backend.remove(name)
-    const deletedAt = action.local?.deletedAt ?? now()
-    added[action.key] = deletedAt
-    await collection.forget(action.key, deletedAt)
+    added[action.key] = action.local?.deletedAt ?? now()
     result.deleted += 1
   }
 
@@ -247,12 +250,18 @@ const syncCollection = async (
         }
         return
       }
-      case 'forget': {
+      case 'tombstone': {
         const deletedAt = action.local.deletedAt ?? now()
-        if (action.addTombstone) {
+        if (deletedAt < expiry) {
+          // 太久以前的删除不再记录（记录本身也只保留这么久），标记直接清掉
+          await collection.forget(key, deletedAt)
+        } else {
           added[key] = deletedAt
         }
-        await collection.forget(key, deletedAt)
+        return
+      }
+      case 'forget': {
+        await collection.forget(key, action.local.deletedAt ?? now())
         return
       }
     }
@@ -275,8 +284,8 @@ const syncCollection = async (
     }
   })
 
-  // 删除记录是多台设备共用的一个文件：写之前重新读一遍并取并集，不覆盖别人刚加的记录
-  const expiry = now() - TOMBSTONE_TTL
+  // 删除记录是多台设备共用的一个文件：写之前重新读一遍并取并集，尽量不覆盖别人刚加的记录。
+  // 远端不支持条件写入，两台设备同时写时仍可能互相覆盖；被盖掉的那条由删除它的设备在下一轮补回（本地标记还在）。
   const stale = Object.values(tombstones).some((at) => at < expiry)
   if (!authError && (Object.keys(added).length > 0 || cleared.size > 0 || stale)) {
     const latest = (await backend.stat(tombstoneName))
