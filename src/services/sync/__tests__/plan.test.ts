@@ -78,12 +78,22 @@ describe('planSync', () => {
     expect(planSync(local, remote({ a: 'r2' }), {})[0].type).toBe('deleteConflict')
   })
 
-  it('only records a tombstone for deletions that had been synced', () => {
+  it('keeps a synced deletion pending until the remote tombstone records it', () => {
     const synced = { key: 'a', modifiedAt: 9, syncedAt: 5, syncedRev: 'r1', deletedAt: 9 }
+    // 远端的删除记录里还没有这条（没写成，或被别的设备盖掉了）：补记，本地标记保留
+    expect(planSync([synced], remote({}), {})).toEqual([
+      { type: 'tombstone', key: 'a', local: synced },
+    ])
+    // 记录里看到了：本地标记可以清掉
+    expect(planSync([synced], remote({}), { a: 9 })).toEqual([
+      { type: 'forget', key: 'a', local: synced },
+    ])
+  })
+
+  it('forgets a deletion that was never synced without recording a tombstone', () => {
     const unsynced = { key: 'b', modifiedAt: 9, deletedAt: 9 }
-    expect(planSync([synced, unsynced], remote({}), {})).toEqual([
-      { type: 'forget', key: 'a', local: synced, addTombstone: true },
-      { type: 'forget', key: 'b', local: unsynced, addTombstone: false },
+    expect(planSync([unsynced], remote({}), {})).toEqual([
+      { type: 'forget', key: 'b', local: unsynced },
     ])
   })
 })

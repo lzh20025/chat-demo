@@ -180,9 +180,83 @@ describe('runSync', () => {
     expect(JSON.parse(files.get(tombstoneFileName('notes'))?.text ?? '{}').deleted).toHaveProperty(
       'x'
     )
+    // 本地的删除标记留到下一轮在远端的删除记录里看到这条为止
+    expect(a.meta.get('x')?.deletedAt).toBeDefined()
+    await runSync(backend, [a.collection], now)
     expect(a.meta.has('x')).toBe(false)
 
     expect(await runSync(backend, [b.collection], now)).toMatchObject({ deleted: 1 })
+    expect(b.notes.has('x')).toBe(false)
+  })
+
+  it('does not let a deletion be undone when the tombstone write fails', async () => {
+    const { backend, files } = createMemoryBackend()
+    const a = createDevice()
+    const b = createDevice()
+    a.put('x', ['one'])
+    await runSync(backend, [a.collection], now)
+    await runSync(backend, [b.collection], now)
+
+    a.delete('x')
+    const failing: SyncBackend = {
+      ...backend,
+      write: async (name, text) => {
+        if (name === tombstoneFileName('notes')) {
+          throw new Error('network down')
+        }
+        return backend.write(name, text)
+      },
+    }
+    // 远端文件删掉了，但删除记录没写成
+    expect(await runSync(failing, [a.collection], now)).toMatchObject({ failed: 1 })
+    expect(files.has(fileName('notes', 'x'))).toBe(false)
+    expect(files.has(tombstoneFileName('notes'))).toBe(false)
+    expect(a.meta.get('x')?.deletedAt).toBeDefined()
+
+    // 下一轮补上删除记录，另一台设备随后删除，而不是把自己的副本传回来
+    await runSync(backend, [a.collection], now)
+    expect(JSON.parse(files.get(tombstoneFileName('notes'))?.text ?? '{}').deleted).toHaveProperty(
+      'x'
+    )
+    expect(await runSync(backend, [b.collection], now)).toMatchObject({ deleted: 1, uploaded: 0 })
+    expect(b.notes.has('x')).toBe(false)
+    expect(files.has(fileName('notes', 'x'))).toBe(false)
+  })
+
+  it('restores a tombstone that another device overwrote', async () => {
+    const { backend, files } = createMemoryBackend()
+    const a = createDevice()
+    const b = createDevice()
+    a.put('x', ['one'])
+    b.put('y', ['two'])
+    await runSync(backend, [a.collection], now)
+    await runSync(backend, [b.collection], now)
+    await runSync(backend, [a.collection], now)
+
+    // 两台设备各删一条；b 写删除记录时读到的是 a 写入之前的版本，把 a 的那条盖掉了
+    a.delete('x')
+    b.delete('y')
+    await runSync(backend, [a.collection], now)
+    const stale: SyncBackend = {
+      ...backend,
+      read: async (name) =>
+        name === tombstoneFileName('notes') ? '{"v":1,"deleted":{}}' : backend.read(name),
+    }
+    await runSync(stale, [b.collection], now)
+    const deleted = () =>
+      JSON.parse(files.get(tombstoneFileName('notes'))?.text ?? '{}').deleted as object
+    expect(deleted()).not.toHaveProperty('x')
+    expect(deleted()).toHaveProperty('y')
+
+    // a 的标记还在，下一轮发现记录里没有自己那条，补回去；两条都在之后各自清掉标记
+    await runSync(backend, [a.collection], now)
+    expect(deleted()).toHaveProperty('x')
+    expect(deleted()).toHaveProperty('y')
+    await runSync(backend, [a.collection], now)
+    await runSync(backend, [b.collection], now)
+    expect(a.meta.has('x')).toBe(false)
+    expect(b.meta.has('y')).toBe(false)
+    expect(a.notes.has('y')).toBe(false)
     expect(b.notes.has('x')).toBe(false)
   })
 

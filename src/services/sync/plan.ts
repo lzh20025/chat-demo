@@ -5,7 +5,8 @@ import type { LocalEntry } from './collection.js'
  * upload：本地有改动，远端没变（或没有）；download：远端变了，本地没改；
  * conflict：两边都变了，要合并；deleteLocal：远端已删除；
  * deleteRemote：本地已删除，远端没变；deleteConflict：本地删了，但远端在那之后可能又变了，要看时间；
- * forget：本地删了，远端也没有了，只需清掉本地的删除标记。
+ * tombstone：本地删了，远端文件已经没有，但远端的删除记录里还没有这条：补记进去，本地的删除标记留着；
+ * forget：删除已经落到远端的删除记录里（或这条从没同步出去过），本地的删除标记可以清掉。
  */
 export type SyncAction =
   | {
@@ -21,7 +22,8 @@ export type SyncAction =
   | { type: 'deleteLocal'; key: string; local: LocalEntry }
   | { type: 'deleteRemote'; key: string; local: LocalEntry; remoteRev: string }
   | { type: 'deleteConflict'; key: string; local: LocalEntry; remoteRev: string }
-  | { type: 'forget'; key: string; local: LocalEntry; addTombstone: boolean }
+  | { type: 'tombstone'; key: string; local: LocalEntry }
+  | { type: 'forget'; key: string; local: LocalEntry }
 
 /**
  * 比较本地条目、远端文件和远端的删除记录，得出这一轮要做的事。纯函数。
@@ -45,13 +47,11 @@ export const planSync = (
 
     if (entry.deletedAt !== undefined) {
       if (remoteRev === undefined) {
-        actions.push({
-          type: 'forget',
-          key,
-          local: entry,
-          // 同步出去过才需要告诉其他设备；从没上传过的会话别人本来就没有
-          addTombstone: entry.syncedRev !== undefined && !Object.hasOwn(tombstones, key),
-        })
+        // 从没上传过的条目别的设备本来就没有，不用留记录。
+        // 同步出去过的：本地的删除标记一直留到在远端的删除记录里看到这条为止。
+        // 记录是多台设备共用的文件，写入可能失败，也可能被别的设备同时写入的版本盖掉；没看到就再补一次。
+        const recorded = entry.syncedRev === undefined || Object.hasOwn(tombstones, key)
+        actions.push({ type: recorded ? 'forget' : 'tombstone', key, local: entry })
       } else if (remoteChanged) {
         actions.push({ type: 'deleteConflict', key, local: entry, remoteRev })
       } else {
