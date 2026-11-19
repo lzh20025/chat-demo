@@ -345,9 +345,16 @@ export const deleteSession = async (sessionId: string): Promise<void> => {
   await Promise.all([
     (async () => {
       try {
-        const summary = await removeSessionRecords(tx, sessionId)
+        const meta = tx.objectStore('syncMeta')
+        const { summary, hadDigest } = await removeSessionRecords(tx, sessionId)
         if (summary && !summary.temporary) {
-          await tombstoneSync(tx.objectStore('syncMeta'), SESSION_SYNC_PREFIX + sessionId)
+          await tombstoneSync(meta, SESSION_SYNC_PREFIX + sessionId)
+        }
+        // 摘要随对话一起删除也是一次记忆改动：留下删除标记，同步时远端和其他设备上的这条摘要也删除，
+        // 否则对话删了，它的摘要还留在云端的记忆文件里。
+        if (hadDigest) {
+          await tombstoneSync(meta, MEMORY_DIGEST_SYNC_PREFIX + sessionId)
+          await touchSync(meta, MEMORY_SYNC_KEY)
         }
       } catch (error) {
         abortTransaction(tx)
@@ -368,12 +375,13 @@ const SESSION_REMOVAL_STORES = [
   'syncMeta',
 ] as const
 
-/** 删除会话及其摘要、摘要记录和不再被引用的原件；返回删除前的列表元数据。 */
+/** 删除会话及其摘要、摘要记录和不再被引用的原件；返回删除前的列表元数据，以及它之前有没有摘要。 */
 const removeSessionRecords = async (tx: WriteTransaction, sessionId: string) => {
   const summaries = tx.objectStore('sessionSummaries')
   const summary = await summaries.get(sessionId)
   await tx.objectStore('sessions').delete(sessionId)
   // 删除对话时同时删除它的近期摘要和摘要记录；已并入用户档案的内容由用户在记忆设置中管理。
+  const hadDigest = (await tx.objectStore('memoryDigests').count(sessionId)) > 0
   await tx.objectStore('memoryDigests').delete(sessionId)
   await deleteLogEntries(tx.objectStore('memoryLog'), sessionId)
   await summaries.delete(sessionId)
@@ -382,7 +390,7 @@ const removeSessionRecords = async (tx: WriteTransaction, sessionId: string) => 
       await tx.objectStore('files').delete(id)
     }
   }
-  return summary
+  return { summary, hadDigest }
 }
 
 const putFiles = async (store: 'files' | 'filesStaging', files: StoredFile[]) => {
@@ -473,7 +481,10 @@ export const commitStaging = async (): Promise<SessionSummary[]> => {
           }
         }
         await tx.objectStore('sessionSummaries').clear()
-        // 会话整体被替换，旧会话的近期摘要和活动记录随之失效。
+        // 会话整体被替换，旧会话的近期摘要和活动记录随之失效；摘要逐条留下删除标记，同步时从远端删除。
+        for (const sessionId of await tx.objectStore('memoryDigests').getAllKeys()) {
+          await tombstoneSync(meta, MEMORY_DIGEST_SYNC_PREFIX + sessionId)
+        }
         await tx.objectStore('memoryDigests').clear()
         await tx.objectStore('memoryLog').clear()
         await touchSync(meta, MEMORY_SYNC_KEY)

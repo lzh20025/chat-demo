@@ -123,7 +123,10 @@ const store = (key: string, value: string | null) => {
 }
 
 const write = (key: string, value: string | null) => {
-  const changed = SYNCED_STORAGE_KEYS.has(key) && read(key) !== value
+  // 只比较会同步出去的部分：只改了某个服务商的 API Key 不算同步设置的改动。
+  // 设置冲突时整份取改动时间较新的一方，一次纯改 Key 不该让本机的旧偏好盖掉另一台设备刚改的设置。
+  const changed =
+    SYNCED_STORAGE_KEYS.has(key) && syncedValue(key, read(key)) !== syncedValue(key, value)
   store(key, value)
   if (changed) {
     store(SETTINGS_MODIFIED_AT_KEY, String(Math.max(Date.now(), syncedSettingsModifiedAt() + 1)))
@@ -183,14 +186,16 @@ const initialOtherProvider = (): ExternalProviderId => {
   return isProviderId(saved) && saved !== 'deepseek' ? saved : 'anthropic'
 }
 
-const initialProviders = (): Settings['providers'] => {
+const parseProviders = (raw: string | null): Settings['providers'] => {
   try {
-    const value: unknown = JSON.parse(read(KEYS.providers) ?? '{}')
+    const value: unknown = JSON.parse(raw ?? '{}')
     return typeof value === 'object' && value !== null ? (value as Settings['providers']) : {}
   } catch {
     return {}
   }
 }
+
+const initialProviders = (): Settings['providers'] => parseProviders(read(KEYS.providers))
 
 /** 未保存过时使用 deepseek-flash */
 const initialModel = (): ChatModel =>
@@ -350,20 +355,25 @@ export const setSyncProvider = (syncProvider: string) => {
 /** 同步的设置：localStorage 里的原始值，null 表示没设置过；各服务商的 apiKey 已去掉 */
 export type SyncedSettings = Partial<Record<(typeof SYNCED_KEYS)[number], string | null>>
 
-const withoutApiKeys = (providers: Settings['providers']) =>
-  Object.fromEntries(
+function withoutApiKeys(providers: Settings['providers']) {
+  return Object.fromEntries(
     Object.entries(providers).flatMap(([id, value]) => {
       const { model, baseUrl } = value ?? {}
       const rest = { ...(model ? { model } : {}), ...(baseUrl ? { baseUrl } : {}) }
       return Object.keys(rest).length ? [[id, rest]] : []
     })
   )
+}
+
+/** 一项设置里会同步出去的内容：服务商设置去掉各家的 apiKey，其他项就是原始值 */
+function syncedValue(key: string, raw: string | null): string | null {
+  return key === KEYS.providers ? JSON.stringify(withoutApiKeys(parseProviders(raw))) : raw
+}
 
 export const exportSyncedSettings = (): SyncedSettings => {
   const values: SyncedSettings = {}
   for (const name of SYNCED_KEYS) {
-    values[name] =
-      name === 'providers' ? JSON.stringify(withoutApiKeys(initialProviders())) : read(KEYS[name])
+    values[name] = syncedValue(KEYS[name], read(KEYS[name]))
   }
   return values
 }
