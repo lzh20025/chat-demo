@@ -52,7 +52,12 @@ const serviceWorkerPlugin = {
           const entryFiles = [...(compilation.entrypoints.get('main')?.getFiles() ?? [])]
           const precache = ['./', ...entryFiles, 'manifest.webmanifest']
           const template = readFileSync(path.resolve(root, 'src/pwa/sw.js'), 'utf8')
-          const placeholders = { __CACHE_VERSION__: cacheVersion, __PRECACHE__: precache }
+          // 只有清单里的路径会被 Service Worker 处理和缓存，其余同源请求（如同源接口）照常走网络
+          const placeholders = {
+            __CACHE_VERSION__: cacheVersion,
+            __PRECACHE__: precache,
+            __APP_FILES__: assets,
+          }
           let source = template
           for (const [placeholder, value] of Object.entries(placeholders)) {
             if (source.split(placeholder).length !== 2) {
