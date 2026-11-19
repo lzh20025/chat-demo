@@ -376,7 +376,8 @@ export const en = {
   temporaryChatTooltip: "Won't use memory, and this chat won't be remembered",
   temporaryChatActiveTooltip:
     "This is a temporary chat: it doesn't use memory and won't be remembered",
-  temporaryChatHint: "Temporary chat: memory isn't used, and nothing here will be remembered",
+  temporaryChatHint:
+    "This chat won't use memory or appear in your history, but it will still follow your custom instructions.",
   // ---- import and export ----
   historyImportedWithMemory: '{chats}. {memory}',
   historyImportedWithMemoryFailed: "{chats}. Memory couldn't be imported. Please try again.",
@@ -384,4 +385,34 @@ export const en = {
   historyImportedMemory: 'Added {count} memories',
   historyImportedMemoryNone: 'No new memories',
   historyImportMemoryFailed: "Memory couldn't be imported. Please try again.",
+  // ---- cloud sync ----
+  syncTitle: 'Cloud sync',
+  syncDescription:
+    'Automatically sync chats, memory, and preferences across your devices. Data is stored in your own cloud drive; API keys, attachment files, and temporary chats are never uploaded.',
+  syncProvider: 'Sync to',
+  syncProviderGoogleDrive: 'Google Drive',
+  syncProviderMock: 'Local mock (dev only)',
+  syncAccount: 'Account',
+  syncAccountSignedOut: 'Not connected',
+  syncAccountSignedIn: 'Connected: {account}',
+  syncAccountExpired: 'Access for {account} has expired. Reconnect to keep syncing.',
+  syncAccountUnconfigured: "This build has no Google OAuth client ID, so it can't connect yet",
+  syncAccountNone: 'No sign-in needed',
+  syncConnect: 'Connect',
+  syncReconnect: 'Reconnect',
+  syncDisconnect: 'Disconnect',
+  syncConnectFailed: "Couldn't connect: {message}",
+  syncStatus: 'Sync status',
+  syncStatusOff: 'Turn on to sync automatically',
+  syncStatusNotConnected: 'Connect an account to start syncing',
+  syncStatusRunning: 'Syncing…',
+  syncStatusNever: 'Not synced yet',
+  syncStatusDone: 'Last synced: {time}',
+  syncStatusFailed: 'Sync failed: {message}',
+  syncNow: 'Sync now',
+  syncErrorScopeDenied:
+    "Drive access wasn't granted. Reconnect and tick the Drive permission on the consent screen.",
+  syncErrorApiDisabled:
+    "The Google Drive API isn't enabled in the Google Cloud project yet. Enable it, wait a minute or two, then connect again.",
+  syncErrorForbidden: 'Google Drive refused the request (403): {message}',
 } satisfies Record<keyof typeof zh, string>

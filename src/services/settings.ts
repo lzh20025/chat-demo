@@ -46,6 +46,10 @@ type Settings = {
    * 消息 id 表示说明挂在这条回答的提示下方；done 表示用户已点「知道了」或打开过记忆设置
    */
   memoryIntro: string | null
+  /** 云端同步开关；本机设置，本身不同步 */
+  syncEnabled: boolean
+  /** 同步服务商的 id，见 services/sync/provider.ts；本机设置，本身不同步 */
+  syncProvider: string
 }
 
 const KEYS = {
@@ -64,7 +68,39 @@ const KEYS = {
   memoryEnabled: 'chat-demo:memory-enabled',
   customInstructions: 'chat-demo:custom-instructions',
   memoryIntro: 'chat-demo:memory-intro',
+  syncEnabled: 'chat-demo:sync-enabled',
+  syncProvider: 'chat-demo:sync-provider',
 } as const
+
+/**
+ * 跨设备同步的设置：都是偏好，不含任何密钥。
+ * 服务商的选择不同步（密钥只在本机，另一台设备未必填了同一家的 Key）；位置、侧边栏、首次说明属于单台设备。
+ */
+const SYNCED_KEYS = [
+  'locale',
+  'themePreference',
+  'ttsVoice',
+  'model',
+  'effort',
+  'thinking',
+  'memoryEnabled',
+  'customInstructions',
+  'providers',
+] as const satisfies readonly (keyof typeof KEYS)[]
+
+const SYNCED_STORAGE_KEYS = new Set<string>(SYNCED_KEYS.map((name) => KEYS[name]))
+/** 同步的设置最近一次在本机被改动的时间 */
+const SETTINGS_MODIFIED_AT_KEY = 'chat-demo:sync-settings-modified-at'
+
+const settingsChangeListeners = new Set<() => void>()
+
+/** 同步的设置在本机被改动后通知 */
+export const onSyncedSettingsChange = (listener: () => void): (() => void) => {
+  settingsChangeListeners.add(listener)
+  return () => {
+    settingsChangeListeners.delete(listener)
+  }
+}
 
 const read = (key: string) => {
   try {
@@ -74,7 +110,7 @@ const read = (key: string) => {
   }
 }
 
-const write = (key: string, value: string | null) => {
+const store = (key: string, value: string | null) => {
   try {
     if (value === null) {
       localStorage.removeItem(key)
@@ -85,6 +121,20 @@ const write = (key: string, value: string | null) => {
     // 存储不可用时只在内存中生效
   }
 }
+
+const write = (key: string, value: string | null) => {
+  const changed = SYNCED_STORAGE_KEYS.has(key) && read(key) !== value
+  store(key, value)
+  if (changed) {
+    store(SETTINGS_MODIFIED_AT_KEY, String(Math.max(Date.now(), syncedSettingsModifiedAt() + 1)))
+    for (const listener of settingsChangeListeners) {
+      listener()
+    }
+  }
+}
+
+/** 同步的设置最近一次改动的时间；0 表示从未改过（都是默认值，不需要上传） */
+export const syncedSettingsModifiedAt = (): number => Number(read(SETTINGS_MODIFIED_AT_KEY)) || 0
 
 /** 位置选择模式跟随浏览器语言，与应用内选择的界面语言无关。 */
 export const isChineseBrowser = (): boolean =>
@@ -171,6 +221,8 @@ export const useSettings = create<Settings>(() => ({
   memoryEnabled: read(KEYS.memoryEnabled) !== 'false',
   customInstructions: read(KEYS.customInstructions) ?? '',
   memoryIntro: read(KEYS.memoryIntro) || null,
+  syncEnabled: read(KEYS.syncEnabled) === 'true',
+  syncProvider: read(KEYS.syncProvider) ?? 'google-drive',
 }))
 
 export const setLocale = (locale: Locale) => {
@@ -283,4 +335,90 @@ export const finishMemoryIntro = () => {
     write(KEYS.memoryIntro, 'done')
     useSettings.setState({ memoryIntro: 'done' })
   }
+}
+
+export const setSyncEnabled = (syncEnabled: boolean) => {
+  write(KEYS.syncEnabled, String(syncEnabled))
+  useSettings.setState({ syncEnabled })
+}
+
+export const setSyncProvider = (syncProvider: string) => {
+  write(KEYS.syncProvider, syncProvider)
+  useSettings.setState({ syncProvider })
+}
+
+/** 同步的设置：localStorage 里的原始值，null 表示没设置过；各服务商的 apiKey 已去掉 */
+export type SyncedSettings = Partial<Record<(typeof SYNCED_KEYS)[number], string | null>>
+
+const withoutApiKeys = (providers: Settings['providers']) =>
+  Object.fromEntries(
+    Object.entries(providers).flatMap(([id, value]) => {
+      const { model, baseUrl } = value ?? {}
+      const rest = { ...(model ? { model } : {}), ...(baseUrl ? { baseUrl } : {}) }
+      return Object.keys(rest).length ? [[id, rest]] : []
+    })
+  )
+
+export const exportSyncedSettings = (): SyncedSettings => {
+  const values: SyncedSettings = {}
+  for (const name of SYNCED_KEYS) {
+    values[name] =
+      name === 'providers' ? JSON.stringify(withoutApiKeys(initialProviders())) : read(KEYS[name])
+  }
+  return values
+}
+
+/**
+ * 写入从其他设备同步来的设置：不认识的字段忽略，值的合法性由各项的读取逻辑把关。
+ * 服务商设置只更新模型和接口地址，本机的 apiKey 原样保留。modifiedAt 是这份设置的改动时间。
+ */
+export const applySyncedSettings = (values: SyncedSettings, modifiedAt: number) => {
+  for (const name of SYNCED_KEYS) {
+    if (!Object.hasOwn(values, name)) {
+      continue
+    }
+    const value = values[name]
+    if (value !== null && typeof value !== 'string') {
+      continue
+    }
+    if (name !== 'providers') {
+      store(KEYS[name], value)
+      continue
+    }
+    let incoming: Settings['providers'] = {}
+    try {
+      const parsed: unknown = JSON.parse(value ?? '{}')
+      incoming = typeof parsed === 'object' && parsed !== null ? parsed : {}
+    } catch {
+      continue
+    }
+    const local = initialProviders()
+    const ids = new Set([
+      ...Object.keys(local),
+      ...Object.keys(incoming),
+    ]) as Set<ExternalProviderId>
+    const merged: Settings['providers'] = {}
+    for (const id of ids) {
+      const apiKey = local[id]?.apiKey
+      const { model, baseUrl } = incoming[id] ?? {}
+      merged[id] = {
+        ...(typeof apiKey === 'string' ? { apiKey } : {}),
+        ...(typeof model === 'string' ? { model } : {}),
+        ...(typeof baseUrl === 'string' ? { baseUrl } : {}),
+      }
+    }
+    store(KEYS.providers, JSON.stringify(merged))
+  }
+  store(SETTINGS_MODIFIED_AT_KEY, String(modifiedAt))
+  useSettings.setState({
+    locale: initialLocale(),
+    themePreference: initialThemePreference(),
+    ttsVoice: initialTtsVoice(),
+    model: initialModel(),
+    effort: initialEffort(),
+    thinking: read(KEYS.thinking) === 'true',
+    memoryEnabled: read(KEYS.memoryEnabled) !== 'false',
+    customInstructions: read(KEYS.customInstructions) ?? '',
+    providers: initialProviders(),
+  })
 }

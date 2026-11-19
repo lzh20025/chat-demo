@@ -45,12 +45,13 @@ import { Select } from '../base/Select.js'
 import { showToast } from '../base/toastState.js'
 import { InstructionsSetting } from './InstructionsSetting.js'
 import { MemorySetting } from './MemorySetting.js'
+import { SyncSetting } from './SyncSetting.js'
 import { ApiKeyConfirm, ApiKeyField, useApiKeyEditor } from './ApiKeyField.js'
 import { closeSettings, useSettingsDialog, type SettingsSection } from './settingsDialogState.js'
 import styles from './Settings.module.css'
 
 /**
- * 设置弹窗：分「通用设置」（模型、思考强度、主题、语言、朗读音色、位置、自定义指令）、「记忆」（档案与近期对话摘要）与「数据管理」（服务商、API Key、导入、导出、删除）。
+ * 设置弹窗：分「通用设置」（模型、思考强度、主题、语言、朗读音色、位置、自定义指令）、「记忆」（档案与近期对话摘要）与「数据管理」（服务商、API Key、导入、导出、云端同步、删除）。
  * 桌面端为居中弹窗、左侧导航；移动端为底部弹层、导航横排在内容上方
  */
 export const SettingsDialog = () => {
@@ -126,6 +127,7 @@ const SettingsContent = () => {
               <ApiKeyField editor={apiKeyEditor} />
               <ImportHistory historyImport={historyImport} disabled={historyBusy} />
               <ExportHistory disabled={historyBusy} />
+              <SyncSetting disabled={historyBusy} />
               <SettingCell
                 label={t('deleteAllSessions')}
                 status={null}

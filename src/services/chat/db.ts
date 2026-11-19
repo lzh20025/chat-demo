@@ -3,6 +3,7 @@ import {
   type DBSchema,
   type IDBPDatabase,
   type IDBPObjectStore,
+  type IDBPTransaction,
   type StoreNames,
 } from 'idb'
 import { create } from 'zustand'
@@ -15,7 +16,7 @@ import {
 } from './types.js'
 
 /** IndexedDB 存储结构版本；新增或调整存储、索引时递增。 */
-const DB_VERSION = 14
+const DB_VERSION = 15
 
 /**
  * 多个标签页使用不同版本时的提示：
@@ -109,6 +110,28 @@ export type MemoryLogEntry = {
   changes?: { kind: 'added' | 'asked' | 'updated' | 'removed' | 'merged'; text: string }[]
 }
 
+/**
+ * 同步元数据：记录每个可同步条目的本地改动时间和上次同步时的基线，同步引擎据此判断哪边变了。
+ * 与数据在同一事务里写入，改动不会漏记。键为 `<种类>:<id>`：
+ * `sessions:<会话 id>`、`memory:main`、`settings:main`，以及记忆条目、摘要的删除标记 `memoryItem:<id>`、`memoryDigest:<会话 id>`。
+ */
+export type SyncMeta = {
+  key: string
+  /** 本地最近一次改动的时间，同一条目上单调递增 */
+  modifiedAt: number
+  /** 上次同步成功时的 modifiedAt；与 modifiedAt 不同表示本地有未同步的改动 */
+  syncedAt?: number
+  /** 上次同步成功时远端文件的版本；与远端当前版本不同表示远端变了 */
+  syncedRev?: string
+  /** 本地已删除（墓碑）：等同步时把删除带到远端 */
+  deletedAt?: number
+}
+
+export const SESSION_SYNC_PREFIX = 'sessions:'
+export const MEMORY_SYNC_KEY = 'memory:main'
+const MEMORY_ITEM_SYNC_PREFIX = 'memoryItem:'
+const MEMORY_DIGEST_SYNC_PREFIX = 'memoryDigest:'
+
 /** 文件引用留在摘要中，删除会话时通过索引判断原件是否仍被引用。 */
 type StoredSessionSummary = SessionSummary & { fileIds: string[] }
 
@@ -132,6 +155,7 @@ interface ChatDB extends DBSchema {
   memoryProfile: { key: string; value: MemoryProfile }
   memoryLog: { key: string; value: MemoryLogEntry }
   memoryItems: { key: string; value: MemoryItem }
+  syncMeta: { key: string; value: SyncMeta }
 }
 
 let dbPromise: Promise<IDBPDatabase<ChatDB>> | null = null
@@ -177,6 +201,9 @@ const getDB = () =>
       if (!db.objectStoreNames.contains('memoryItems')) {
         db.createObjectStore('memoryItems', { keyPath: 'id' })
       }
+      if (!db.objectStoreNames.contains('syncMeta')) {
+        db.createObjectStore('syncMeta', { keyPath: 'key' })
+      }
       const summaries = db.objectStoreNames.contains('sessionSummaries')
         ? tx.objectStore('sessionSummaries')
         : db.createObjectStore('sessionSummaries', { keyPath: 'id' })
@@ -210,6 +237,46 @@ const getDB = () =>
       throw error
     }))
 
+type SyncMetaStore = IDBPObjectStore<ChatDB, ArrayLike<StoreNames<ChatDB>>, 'syncMeta', 'readwrite'>
+type WriteTransaction = IDBPTransaction<ChatDB, ArrayLike<StoreNames<ChatDB>>, 'readwrite'>
+
+const localChangeListeners = new Set<() => void>()
+
+/** 可同步的数据在本页被改动后通知；同步写回的数据不通知。 */
+export const onLocalChange = (listener: () => void): (() => void) => {
+  localChangeListeners.add(listener)
+  return () => {
+    localChangeListeners.delete(listener)
+  }
+}
+
+const notifyLocalChange = () => {
+  for (const listener of localChangeListeners) {
+    listener()
+  }
+}
+
+/** 同一条目的改动时间严格递增，时钟回拨时也能看出「变过」 */
+const nextModifiedAt = (previous?: number) => Math.max(Date.now(), (previous ?? 0) + 1)
+
+const syncBaseline = (meta: SyncMeta | undefined) =>
+  meta?.syncedRev === undefined ? {} : { syncedAt: meta.syncedAt, syncedRev: meta.syncedRev }
+
+/** 标记条目有本地改动；之前的删除标记随之取消 */
+const touchSync = async (store: SyncMetaStore, key: string) => {
+  const meta = await store.get(key)
+  await store.put({ key, modifiedAt: nextModifiedAt(meta?.modifiedAt), ...syncBaseline(meta) })
+}
+
+/** 标记条目已在本地删除 */
+const tombstoneSync = async (store: SyncMetaStore, key: string) => {
+  const meta = await store.get(key)
+  const at = nextModifiedAt(meta?.modifiedAt)
+  await store.put({ key, modifiedAt: at, deletedAt: at, ...syncBaseline(meta) })
+}
+
+const prefixRange = (prefix: string) => IDBKeyRange.bound(prefix, `${prefix}\uffff`)
+
 export const loadSessionSummaries = async (): Promise<SessionSummary[]> =>
   (await (await getDB()).getAll('sessionSummaries')).map(toSessionSummary)
 
@@ -218,7 +285,10 @@ export const loadSession = async (id: string): Promise<Session | undefined> =>
 
 export const saveSession = async (session: Session, files: StoredFile[] = []): Promise<void> => {
   const summary = storedSummary(session)
-  const tx = (await getDB()).transaction(['sessions', 'sessionSummaries', 'files'], 'readwrite')
+  const tx = (await getDB()).transaction(
+    ['sessions', 'sessionSummaries', 'files', 'syncMeta'],
+    'readwrite'
+  )
   await Promise.all([
     (async () => {
       try {
@@ -227,6 +297,10 @@ export const saveSession = async (session: Session, files: StoredFile[] = []): P
         }
         await tx.objectStore('sessions').put(session)
         await tx.objectStore('sessionSummaries').put(summary)
+        // 临时对话不同步
+        if (!session.temporary) {
+          await touchSync(tx.objectStore('syncMeta'), SESSION_SYNC_PREFIX + session.id)
+        }
       } catch (error) {
         abortTransaction(tx)
         throw error
@@ -234,11 +308,14 @@ export const saveSession = async (session: Session, files: StoredFile[] = []): P
     })(),
     tx.done,
   ])
+  if (!session.temporary) {
+    notifyLocalChange()
+  }
 }
 
 /** 未打开的会话也可重命名，只读取该会话，原子更新详情和列表。 */
 export const renameSession = async (id: string, title: string): Promise<void> => {
-  const tx = (await getDB()).transaction(['sessions', 'sessionSummaries'], 'readwrite')
+  const tx = (await getDB()).transaction(['sessions', 'sessionSummaries', 'syncMeta'], 'readwrite')
   await Promise.all([
     (async () => {
       try {
@@ -248,35 +325,8 @@ export const renameSession = async (id: string, title: string): Promise<void> =>
           session.title = title
           await sessions.put(session)
           await tx.objectStore('sessionSummaries').put(storedSummary(session))
-        }
-      } catch (error) {
-        abortTransaction(tx)
-        throw error
-      }
-    })(),
-    tx.done,
-  ])
-}
-
-/** 删除会话，仅清理已无会话引用的本地原件；远端文件不删。 */
-export const deleteSession = async (sessionId: string): Promise<void> => {
-  const tx = (await getDB()).transaction(
-    ['sessions', 'sessionSummaries', 'files', 'memoryDigests', 'memoryLog'],
-    'readwrite'
-  )
-  await Promise.all([
-    (async () => {
-      try {
-        const summaries = tx.objectStore('sessionSummaries')
-        const summary = await summaries.get(sessionId)
-        await tx.objectStore('sessions').delete(sessionId)
-        // 删除对话时同时删除它的近期摘要和摘要记录；已并入用户档案的内容由用户在记忆设置中管理。
-        await tx.objectStore('memoryDigests').delete(sessionId)
-        await deleteLogEntries(tx.objectStore('memoryLog'), sessionId)
-        await summaries.delete(sessionId)
-        for (const id of summary?.fileIds ?? []) {
-          if ((await summaries.index('fileIds').count(id)) === 0) {
-            await tx.objectStore('files').delete(id)
+          if (!session.temporary) {
+            await touchSync(tx.objectStore('syncMeta'), SESSION_SYNC_PREFIX + id)
           }
         }
       } catch (error) {
@@ -286,6 +336,53 @@ export const deleteSession = async (sessionId: string): Promise<void> => {
     })(),
     tx.done,
   ])
+  notifyLocalChange()
+}
+
+/** 删除会话，仅清理已无会话引用的本地原件；远端文件不删。 */
+export const deleteSession = async (sessionId: string): Promise<void> => {
+  const tx = (await getDB()).transaction(SESSION_REMOVAL_STORES, 'readwrite')
+  await Promise.all([
+    (async () => {
+      try {
+        const summary = await removeSessionRecords(tx, sessionId)
+        if (summary && !summary.temporary) {
+          await tombstoneSync(tx.objectStore('syncMeta'), SESSION_SYNC_PREFIX + sessionId)
+        }
+      } catch (error) {
+        abortTransaction(tx)
+        throw error
+      }
+    })(),
+    tx.done,
+  ])
+  notifyLocalChange()
+}
+
+const SESSION_REMOVAL_STORES = [
+  'sessions',
+  'sessionSummaries',
+  'files',
+  'memoryDigests',
+  'memoryLog',
+  'syncMeta',
+] as const
+
+/** 删除会话及其摘要、摘要记录和不再被引用的原件；返回删除前的列表元数据。 */
+const removeSessionRecords = async (tx: WriteTransaction, sessionId: string) => {
+  const summaries = tx.objectStore('sessionSummaries')
+  const summary = await summaries.get(sessionId)
+  await tx.objectStore('sessions').delete(sessionId)
+  // 删除对话时同时删除它的近期摘要和摘要记录；已并入用户档案的内容由用户在记忆设置中管理。
+  await tx.objectStore('memoryDigests').delete(sessionId)
+  await deleteLogEntries(tx.objectStore('memoryLog'), sessionId)
+  await summaries.delete(sessionId)
+  for (const id of summary?.fileIds ?? []) {
+    if ((await summaries.index('fileIds').count(id)) === 0) {
+      await tx.objectStore('files').delete(id)
+    }
+  }
+  return summary
 }
 
 const putFiles = async (store: 'files' | 'filesStaging', files: StoredFile[]) => {
@@ -359,18 +456,27 @@ export const commitStaging = async (): Promise<SessionSummary[]> => {
       'filesStaging',
       'memoryDigests',
       'memoryLog',
+      'syncMeta',
     ],
     'readwrite'
   )
+  const meta = tx.objectStore('syncMeta')
   const move = async (from: 'sessionsStaging' | 'filesStaging', to: 'sessions' | 'files') => {
     try {
       const target = tx.objectStore(to)
       await target.clear()
       if (to === 'sessions') {
+        // 被替换掉的会话记为已删除，同步时从远端移除；随后写入的同 id 会话会取消这个标记。
+        for (const summary of await tx.objectStore('sessionSummaries').getAll()) {
+          if (!summary.temporary) {
+            await tombstoneSync(meta, SESSION_SYNC_PREFIX + summary.id)
+          }
+        }
         await tx.objectStore('sessionSummaries').clear()
         // 会话整体被替换，旧会话的近期摘要和活动记录随之失效。
         await tx.objectStore('memoryDigests').clear()
         await tx.objectStore('memoryLog').clear()
+        await touchSync(meta, MEMORY_SYNC_KEY)
       }
       for (
         let cursor = await tx.objectStore(from).openCursor();
@@ -382,6 +488,9 @@ export const commitStaging = async (): Promise<SessionSummary[]> => {
           const summary = storedSummary(cursor.value as Session)
           await tx.objectStore('sessionSummaries').put(summary)
           summaries.push(toSessionSummary(summary))
+          if (!summary.temporary) {
+            await touchSync(meta, SESSION_SYNC_PREFIX + summary.id)
+          }
         }
       }
       await tx.objectStore(from).clear()
@@ -392,6 +501,7 @@ export const commitStaging = async (): Promise<SessionSummary[]> => {
     }
   }
   await Promise.all([move('sessionsStaging', 'sessions'), move('filesStaging', 'files'), tx.done])
+  notifyLocalChange()
   // 直接返回本次提交的列表，调用方无需在替换成功后再发起可能失败的读取。
   return summaries
 }
@@ -404,7 +514,7 @@ export const mergeStaging = async (): Promise<{ added: SessionSummary[]; skipped
   const added: SessionSummary[] = []
   let skipped = 0
   const tx = (await getDB()).transaction(
-    ['sessions', 'sessionSummaries', 'files', 'sessionsStaging', 'filesStaging'],
+    ['sessions', 'sessionSummaries', 'files', 'sessionsStaging', 'filesStaging', 'syncMeta'],
     'readwrite'
   )
   const merge = async () => {
@@ -426,6 +536,9 @@ export const mergeStaging = async (): Promise<{ added: SessionSummary[]; skipped
         await sessions.put(cursor.value)
         await tx.objectStore('sessionSummaries').put(summary)
         added.push(toSessionSummary(summary))
+        if (!summary.temporary) {
+          await touchSync(tx.objectStore('syncMeta'), SESSION_SYNC_PREFIX + summary.id)
+        }
         for (const id of summary.fileIds) {
           fileIds.add(id)
         }
@@ -447,6 +560,9 @@ export const mergeStaging = async (): Promise<{ added: SessionSummary[]; skipped
     }
   }
   await Promise.all([merge(), tx.done])
+  if (added.length > 0) {
+    notifyLocalChange()
+  }
   return { added, skipped }
 }
 
@@ -454,33 +570,60 @@ export const loadMemoryDigests = async (): Promise<MemoryDigest[]> =>
   (await getDB()).getAll('memoryDigests')
 
 export const saveMemoryDigest = async (digest: MemoryDigest): Promise<void> => {
-  await (await getDB()).put('memoryDigests', digest)
+  const tx = (await getDB()).transaction(['memoryDigests', 'syncMeta'], 'readwrite')
+  await Promise.all([
+    tx.objectStore('memoryDigests').put(digest),
+    touchSync(tx.objectStore('syncMeta'), MEMORY_SYNC_KEY),
+    tx.done,
+  ])
+  notifyLocalChange()
 }
 
+/** 用户删掉一条近期摘要：留下删除标记，同步时其他设备上的同一条摘要也删除 */
 export const deleteMemoryDigest = async (sessionId: string): Promise<void> => {
-  await (await getDB()).delete('memoryDigests', sessionId)
+  const tx = (await getDB()).transaction(['memoryDigests', 'syncMeta'], 'readwrite')
+  const meta = tx.objectStore('syncMeta')
+  await Promise.all([
+    tx.objectStore('memoryDigests').delete(sessionId),
+    tombstoneSync(meta, MEMORY_DIGEST_SYNC_PREFIX + sessionId),
+    touchSync(meta, MEMORY_SYNC_KEY),
+    tx.done,
+  ])
+  notifyLocalChange()
 }
 
 export const loadMemoryProfile = async (): Promise<MemoryProfile | undefined> =>
   (await getDB()).get('memoryProfile', 'profile')
 
 export const saveMemoryProfile = async (profile: MemoryProfile): Promise<void> => {
-  await (await getDB()).put('memoryProfile', profile)
+  const tx = (await getDB()).transaction(['memoryProfile', 'syncMeta'], 'readwrite')
+  await Promise.all([
+    tx.objectStore('memoryProfile').put(profile),
+    touchSync(tx.objectStore('syncMeta'), MEMORY_SYNC_KEY),
+    tx.done,
+  ])
+  notifyLocalChange()
 }
 
 /** 清空全部记忆：条目、近期摘要、元数据与活动记录；会话本身不受影响。 */
 export const clearMemory = async (): Promise<void> => {
   const tx = (await getDB()).transaction(
-    ['memoryDigests', 'memoryProfile', 'memoryLog', 'memoryItems'],
+    ['memoryDigests', 'memoryProfile', 'memoryLog', 'memoryItems', 'syncMeta'],
     'readwrite'
   )
+  const meta = tx.objectStore('syncMeta')
   await Promise.all([
     tx.objectStore('memoryDigests').clear(),
     tx.objectStore('memoryProfile').clear(),
     tx.objectStore('memoryLog').clear(),
     tx.objectStore('memoryItems').clear(),
+    // 清空时间（见 memory/state.ts 的 readClearedAt）会带到其他设备，逐条的删除标记不再需要
+    meta.delete(prefixRange(MEMORY_ITEM_SYNC_PREFIX)),
+    meta.delete(prefixRange(MEMORY_DIGEST_SYNC_PREFIX)),
+    touchSync(meta, MEMORY_SYNC_KEY),
     tx.done,
   ])
+  notifyLocalChange()
 }
 
 export const loadMemoryItems = async (): Promise<MemoryItem[]> =>
@@ -515,9 +658,10 @@ export const commitMemory = async ({
   }) => MemoryPlan | null
 }): Promise<MemoryPlan | null> => {
   const tx = (await getDB()).transaction(
-    ['sessionSummaries', 'memoryItems', 'memoryProfile', 'memoryDigests', 'memoryLog'],
+    ['sessionSummaries', 'memoryItems', 'memoryProfile', 'memoryDigests', 'memoryLog', 'syncMeta'],
     'readwrite'
   )
+  const meta = tx.objectStore('syncMeta')
   const run = async (): Promise<MemoryPlan | null> => {
     try {
       if (sessionId !== undefined && !(await tx.objectStore('sessionSummaries').count(sessionId))) {
@@ -534,9 +678,14 @@ export const commitMemory = async ({
       }
       for (const item of result.putItems ?? []) {
         await tx.objectStore('memoryItems').put(item)
+        // 撤销删除会把条目原样放回（updatedAt 不变）：把删除标记改成「放回时间」，同步时不会再被旧的删除带走
+        if (await meta.count(MEMORY_ITEM_SYNC_PREFIX + item.id)) {
+          await touchSync(meta, MEMORY_ITEM_SYNC_PREFIX + item.id)
+        }
       }
       for (const id of result.deleteItems ?? []) {
         await tx.objectStore('memoryItems').delete(id)
+        await tombstoneSync(meta, MEMORY_ITEM_SYNC_PREFIX + id)
       }
       if (result.profile) {
         await tx.objectStore('memoryProfile').put(result.profile)
@@ -552,13 +701,27 @@ export const commitMemory = async ({
           await log.delete(entry.id)
         }
       }
+      // 只追加活动记录不算记忆改动：活动记录不同步
+      if (
+        result.putItems?.length ||
+        result.deleteItems?.length ||
+        result.profile ||
+        result.digests?.length
+      ) {
+        await touchSync(meta, MEMORY_SYNC_KEY)
+        changed = true
+      }
       return result
     } catch (error) {
       abortTransaction(tx)
       throw error
     }
   }
+  let changed = false
   const [result] = await Promise.all([run(), tx.done])
+  if (changed) {
+    notifyLocalChange()
+  }
   return result
 }
 
@@ -571,19 +734,23 @@ export const patchSessionMessage = async (
   messageId: string,
   update: (message: Message) => Message
 ): Promise<boolean> => {
-  const tx = (await getDB()).transaction('sessions', 'readwrite')
+  const tx = (await getDB()).transaction(['sessions', 'syncMeta'], 'readwrite')
   const run = async () => {
     try {
-      const session = await tx.store.get(sessionId)
+      const sessions = tx.objectStore('sessions')
+      const session = await sessions.get(sessionId)
       if (!session?.messages.some((message) => message.id === messageId)) {
         return false
       }
-      await tx.store.put({
+      await sessions.put({
         ...session,
         messages: session.messages.map((message) =>
           message.id === messageId ? update(message) : message
         ),
       })
+      if (!session.temporary) {
+        await touchSync(tx.objectStore('syncMeta'), SESSION_SYNC_PREFIX + sessionId)
+      }
       return true
     } catch (error) {
       abortTransaction(tx)
@@ -591,6 +758,9 @@ export const patchSessionMessage = async (
     }
   }
   const [patched] = await Promise.all([run(), tx.done])
+  if (patched) {
+    notifyLocalChange()
+  }
   return patched
 }
 
@@ -640,4 +810,283 @@ export const deleteMemoryLogForSession = async (sessionId: string): Promise<void
 export const reportStorageError = (action: string) => (error: unknown) => {
   // eslint-disable-next-line no-console
   console.error(`[storage] ${action} failed`, error)
+}
+
+// ---- 同步专用读写：写回远端数据时不产生本地改动标记，也不通知 onLocalChange ----
+
+/** 写回时附带的同步状态 */
+export type SyncWrite = {
+  /** 规划同步时看到的本地改动时间；写入前在事务里再核对一次，期间本地又改了就放弃 */
+  expect: number | undefined
+  /** 写入后的改动时间 */
+  modifiedAt: number
+  /** 给了表示内容与远端这个版本一致（已同步）；没给表示是合并结果，还要上传 */
+  rev?: string
+}
+
+const syncedMeta = (key: string, previous: SyncMeta | undefined, sync: SyncWrite): SyncMeta =>
+  sync.rev === undefined
+    ? { key, modifiedAt: sync.modifiedAt, ...syncBaseline(previous) }
+    : { key, modifiedAt: sync.modifiedAt, syncedAt: sync.modifiedAt, syncedRev: sync.rev }
+
+export const loadSyncMeta = async (prefix: string): Promise<SyncMeta[]> =>
+  (await getDB()).getAll('syncMeta', prefixRange(prefix))
+
+export const getSyncMeta = async (key: string): Promise<SyncMeta | undefined> =>
+  (await getDB()).get('syncMeta', key)
+
+/**
+ * 记下一次成功的同步：modifiedAt 是上传（或下载）的那份内容的改动时间。
+ * 同步期间本地又改了的话，条目的 modifiedAt 已经更大，下一轮仍会被当作有改动。
+ */
+export const markSynced = async (key: string, rev: string, modifiedAt: number): Promise<void> => {
+  const tx = (await getDB()).transaction('syncMeta', 'readwrite')
+  const meta = await tx.store.get(key)
+  await Promise.all([
+    tx.store.put({ ...(meta ?? { key, modifiedAt }), syncedAt: modifiedAt, syncedRev: rev }),
+    tx.done,
+  ])
+}
+
+/** 删除已经带到远端后，本地的删除标记不再需要；期间条目又被改动（恢复）时保留 */
+export const dropSyncTombstone = async (key: string, deletedAt: number): Promise<void> => {
+  const tx = (await getDB()).transaction('syncMeta', 'readwrite')
+  const meta = await tx.store.get(key)
+  await Promise.all([meta?.deletedAt === deletedAt ? tx.store.delete(key) : undefined, tx.done])
+}
+
+/** 换了同步服务商或账号：丢掉指定前缀下的全部基线，下一轮按首次同步处理；改动时间和删除标记保留 */
+export const resetSyncBaselines = async (prefix: string): Promise<void> => {
+  const tx = (await getDB()).transaction('syncMeta', 'readwrite')
+  await Promise.all([
+    (async () => {
+      for (
+        let cursor = await tx.store.openCursor(prefixRange(prefix));
+        cursor;
+        cursor = await cursor.continue()
+      ) {
+        const { key, modifiedAt, deletedAt } = cursor.value
+        await cursor.update({ key, modifiedAt, ...(deletedAt === undefined ? {} : { deletedAt }) })
+      }
+    })(),
+    tx.done,
+  ])
+}
+
+/** 丢掉一个会话的同步基线：下一轮同步把它当作两边都改过，与远端重新合并 */
+export const markSyncConflict = async (sessionId: string): Promise<void> => {
+  const key = SESSION_SYNC_PREFIX + sessionId
+  const tx = (await getDB()).transaction('syncMeta', 'readwrite')
+  const meta = await tx.store.get(key)
+  await Promise.all([
+    meta ? tx.store.put({ key, modifiedAt: nextModifiedAt(meta.modifiedAt) }) : undefined,
+    tx.done,
+  ])
+  notifyLocalChange()
+}
+
+/** 从未同步出去、又放了很久的删除标记不再保留 */
+export const pruneSyncTombstones = async (before: number): Promise<void> => {
+  const tx = (await getDB()).transaction('syncMeta', 'readwrite')
+  await Promise.all([
+    (async () => {
+      for (let cursor = await tx.store.openCursor(); cursor; cursor = await cursor.continue()) {
+        if (cursor.value.deletedAt !== undefined && cursor.value.deletedAt < before) {
+          await cursor.delete()
+        }
+      }
+    })(),
+    tx.done,
+  ])
+}
+
+/**
+ * 写回一个来自远端（或合并后）的会话；本地在规划之后又改动过时返回 null，什么都不写。
+ * 新版本不再引用的原件一并清理。
+ */
+export const applySyncedSession = async (
+  session: Session,
+  sync: SyncWrite
+): Promise<SessionSummary | null> => {
+  const key = SESSION_SYNC_PREFIX + session.id
+  const summary = storedSummary(session)
+  const tx = (await getDB()).transaction(
+    ['sessions', 'sessionSummaries', 'files', 'syncMeta'],
+    'readwrite'
+  )
+  const run = async () => {
+    try {
+      const summaries = tx.objectStore('sessionSummaries')
+      const [meta, previous] = await Promise.all([
+        tx.objectStore('syncMeta').get(key),
+        summaries.get(session.id),
+      ])
+      if ((meta?.modifiedAt ?? previous?.updatedAt) !== sync.expect) {
+        return null
+      }
+      await tx.objectStore('sessions').put(session)
+      await summaries.put(summary)
+      for (const id of previous?.fileIds ?? []) {
+        if ((await summaries.index('fileIds').count(id)) === 0) {
+          await tx.objectStore('files').delete(id)
+        }
+      }
+      await tx.objectStore('syncMeta').put(syncedMeta(key, meta, sync))
+      return toSessionSummary(summary)
+    } catch (error) {
+      abortTransaction(tx)
+      throw error
+    }
+  }
+  const [result] = await Promise.all([run(), tx.done])
+  return result
+}
+
+/** 远端已删除的会话在本地删除，不留删除标记；本地在规划之后又改动过时返回 false。 */
+export const removeSyncedSession = async (
+  sessionId: string,
+  expect: number | undefined
+): Promise<boolean> => {
+  const key = SESSION_SYNC_PREFIX + sessionId
+  const tx = (await getDB()).transaction(SESSION_REMOVAL_STORES, 'readwrite')
+  const run = async () => {
+    try {
+      const [meta, previous] = await Promise.all([
+        tx.objectStore('syncMeta').get(key),
+        tx.objectStore('sessionSummaries').get(sessionId),
+      ])
+      if ((meta?.modifiedAt ?? previous?.updatedAt) !== expect) {
+        return false
+      }
+      await removeSessionRecords(tx, sessionId)
+      await tx.objectStore('syncMeta').delete(key)
+      return true
+    } catch (error) {
+      abortTransaction(tx)
+      throw error
+    }
+  }
+  const [removed] = await Promise.all([run(), tx.done])
+  return removed
+}
+
+/** 记忆的可同步部分；活动记录只留在本机 */
+export type MemorySyncState = {
+  items: MemoryItem[]
+  profile: MemoryProfile | null
+  digests: MemoryDigest[]
+  /** 已删除的条目：id → 删除时间 */
+  deletedItems: Record<string, number>
+  /** 删除后又放回的条目：id → 放回时间 */
+  revivedItems: Record<string, number>
+  /** 用户删掉的近期摘要：会话 id → 删除时间 */
+  deletedDigests: Record<string, number>
+}
+
+/** 还没有同步元数据的旧数据按「有改动」处理 */
+const memoryModifiedAt = (meta: SyncMeta | undefined, hasData: boolean) =>
+  meta?.modifiedAt ?? (hasData ? 1 : undefined)
+
+export const loadMemoryForSync = async (): Promise<{
+  state: MemorySyncState
+  modifiedAt: number | undefined
+  meta: SyncMeta | undefined
+}> => {
+  const tx = (await getDB()).transaction(
+    ['memoryItems', 'memoryProfile', 'memoryDigests', 'syncMeta'],
+    'readonly'
+  )
+  const metaStore = tx.objectStore('syncMeta')
+  const [items, profile, digests, itemMarks, digestMarks, meta] = await Promise.all([
+    tx.objectStore('memoryItems').getAll(),
+    tx.objectStore('memoryProfile').get('profile'),
+    tx.objectStore('memoryDigests').getAll(),
+    metaStore.getAll(prefixRange(MEMORY_ITEM_SYNC_PREFIX)),
+    metaStore.getAll(prefixRange(MEMORY_DIGEST_SYNC_PREFIX)),
+    metaStore.get(MEMORY_SYNC_KEY),
+  ])
+  const marks = (list: SyncMeta[], prefix: string, deleted: boolean) =>
+    Object.fromEntries(
+      list
+        .filter((mark) => (mark.deletedAt !== undefined) === deleted)
+        .map((mark) => [mark.key.slice(prefix.length), mark.deletedAt ?? mark.modifiedAt])
+    )
+  return {
+    state: {
+      items,
+      profile: profile ?? null,
+      digests,
+      deletedItems: marks(itemMarks, MEMORY_ITEM_SYNC_PREFIX, true),
+      revivedItems: marks(itemMarks, MEMORY_ITEM_SYNC_PREFIX, false),
+      deletedDigests: marks(digestMarks, MEMORY_DIGEST_SYNC_PREFIX, true),
+    },
+    modifiedAt: memoryModifiedAt(meta, items.length > 0 || digests.length > 0 || Boolean(profile)),
+    meta,
+  }
+}
+
+/**
+ * 用远端（或合并后）的记忆整体替换本地的条目、元数据、摘要和删除标记；活动记录不动。
+ * 对话已不在本地的摘要不写入。本地在规划之后又改动过时返回 false，什么都不写。
+ */
+export const applySyncedMemory = async (
+  state: MemorySyncState,
+  sync: SyncWrite
+): Promise<boolean> => {
+  const tx = (await getDB()).transaction(
+    ['sessionSummaries', 'memoryItems', 'memoryProfile', 'memoryDigests', 'syncMeta'],
+    'readwrite'
+  )
+  const run = async () => {
+    try {
+      const metaStore = tx.objectStore('syncMeta')
+      const items = tx.objectStore('memoryItems')
+      const digests = tx.objectStore('memoryDigests')
+      const profiles = tx.objectStore('memoryProfile')
+      const [meta, itemCount, digestCount, profileCount] = await Promise.all([
+        metaStore.get(MEMORY_SYNC_KEY),
+        items.count(),
+        digests.count(),
+        profiles.count(),
+      ])
+      if (memoryModifiedAt(meta, itemCount + digestCount + profileCount > 0) !== sync.expect) {
+        return false
+      }
+      await items.clear()
+      for (const item of state.items) {
+        await items.put(item)
+      }
+      if (state.profile) {
+        await profiles.put(state.profile)
+      } else {
+        await profiles.clear()
+      }
+      await digests.clear()
+      for (const digest of state.digests) {
+        if (await tx.objectStore('sessionSummaries').count(digest.sessionId)) {
+          await digests.put(digest)
+        }
+      }
+      await metaStore.delete(prefixRange(MEMORY_ITEM_SYNC_PREFIX))
+      await metaStore.delete(prefixRange(MEMORY_DIGEST_SYNC_PREFIX))
+      for (const [id, at] of Object.entries(state.deletedItems)) {
+        await metaStore.put({ key: MEMORY_ITEM_SYNC_PREFIX + id, modifiedAt: at, deletedAt: at })
+      }
+      for (const [id, at] of Object.entries(state.revivedItems)) {
+        if (!(id in state.deletedItems) || state.deletedItems[id] < at) {
+          await metaStore.put({ key: MEMORY_ITEM_SYNC_PREFIX + id, modifiedAt: at })
+        }
+      }
+      for (const [id, at] of Object.entries(state.deletedDigests)) {
+        await metaStore.put({ key: MEMORY_DIGEST_SYNC_PREFIX + id, modifiedAt: at, deletedAt: at })
+      }
+      await metaStore.put(syncedMeta(MEMORY_SYNC_KEY, meta, sync))
+      return true
+    } catch (error) {
+      abortTransaction(tx)
+      throw error
+    }
+  }
+  const [applied] = await Promise.all([run(), tx.done])
+  return applied
 }

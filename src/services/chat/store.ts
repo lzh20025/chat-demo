@@ -603,6 +603,101 @@ export const removeSession = (id: string): Promise<boolean> => {
   return task
 }
 
+/** 会话已从数据库删除后，清掉它在内存里的全部状态 */
+const forgetSession = (id: string) => {
+  sessionLoads.delete(id)
+  sessionAccess.delete(id)
+  unsavedSessions.delete(id)
+  pendingFiles.delete(id)
+  clearDraft(id)
+  onSessionRemoved(id)
+  set((state) => ({
+    sessions: state.sessions.filter((session) => session.id !== id),
+    sessionCache: Object.fromEntries(
+      Object.entries(state.sessionCache).filter(([key]) => key !== id)
+    ),
+    sessionLoadErrors: Object.fromEntries(
+      Object.entries(state.sessionLoadErrors).filter(([key]) => key !== id)
+    ),
+    sessionSaveErrors: Object.fromEntries(
+      Object.entries(state.sessionSaveErrors).filter(([key]) => key !== id)
+    ),
+    activeId: state.activeId === id ? null : state.activeId,
+  }))
+}
+
+/** 同步：会话正在生成、有改动还没落盘或正在删除时，既不上传也不被远端版本覆盖 */
+export const isSessionBusy = (id: string) =>
+  get().importingHistory ||
+  Object.hasOwn(get().streaming, id) ||
+  unsavedSessions.has(id) ||
+  deletingSessions.has(id)
+
+/**
+ * 同步：写入来自其他设备（或合并后）的会话，列表和已打开的详情随之更新。
+ * 会话正忙、或本地在同步规划之后又改动过时返回 false，留到下一轮。
+ */
+export const applySyncedSession = async (
+  session: Session,
+  sync: db.SyncWrite
+): Promise<boolean> => {
+  const { id } = session
+  if (!get().ready || isSessionBusy(id)) {
+    return false
+  }
+  const epoch = historyEpoch
+  const cached = getSession(id)
+  const summary = await db.applySyncedSession(session, sync)
+  if (!summary) {
+    return false
+  }
+  if (epoch !== historyEpoch) {
+    return true
+  }
+  if (getSession(id) !== cached) {
+    // 写库期间这个会话在本页又变了：内存里的版本不含刚写入的远端内容，随后的保存会盖掉它。
+    // 丢掉这条的同步基线，下一轮按冲突处理，与远端重新合并。
+    await db.markSyncConflict(id)
+    return true
+  }
+  // 进行中的读取拿到的可能是写入前的版本，作废后按需重读
+  sessionLoads.delete(id)
+  set((state) => ({
+    sessions: sortSessions([...state.sessions.filter((item) => item.id !== id), summary]),
+    sessionCache: Object.hasOwn(state.sessionCache, id)
+      ? { ...state.sessionCache, [id]: settleInterrupted(normalizeSession(session)) }
+      : state.sessionCache,
+    sessionLoadErrors: { ...state.sessionLoadErrors, [id]: false },
+  }))
+  if (get().activeId === id && !getSession(id)) {
+    void ensureSessionLoaded(id)
+  }
+  return true
+}
+
+/** 同步：其他设备已删除的会话在本地删除，不留删除标记。 */
+export const removeSyncedSession = async (
+  id: string,
+  expect: number | undefined
+): Promise<boolean> => {
+  if (!get().ready || isSessionBusy(id)) {
+    return false
+  }
+  const epoch = historyEpoch
+  deletingSessions.add(id)
+  try {
+    if (!(await db.removeSyncedSession(id, expect))) {
+      return false
+    }
+    if (epoch === historyEpoch) {
+      forgetSession(id)
+    }
+    return true
+  } finally {
+    deletingSessions.delete(id)
+  }
+}
+
 const removeSessionData = async (id: string): Promise<boolean> => {
   if (get().importingHistory || deletingSessions.has(id)) {
     return false
@@ -620,25 +715,7 @@ const removeSessionData = async (id: string): Promise<boolean> => {
     if (epoch !== historyEpoch) {
       return true
     }
-    sessionLoads.delete(id)
-    sessionAccess.delete(id)
-    unsavedSessions.delete(id)
-    pendingFiles.delete(id)
-    clearDraft(id)
-    onSessionRemoved(id)
-    set((state) => ({
-      sessions: state.sessions.filter((session) => session.id !== id),
-      sessionCache: Object.fromEntries(
-        Object.entries(state.sessionCache).filter(([key]) => key !== id)
-      ),
-      sessionLoadErrors: Object.fromEntries(
-        Object.entries(state.sessionLoadErrors).filter(([key]) => key !== id)
-      ),
-      sessionSaveErrors: Object.fromEntries(
-        Object.entries(state.sessionSaveErrors).filter(([key]) => key !== id)
-      ),
-      activeId: state.activeId === id ? null : state.activeId,
-    }))
+    forgetSession(id)
     return true
   } catch (error) {
     db.reportStorageError('delete session')(error)
