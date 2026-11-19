@@ -1,8 +1,9 @@
+import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from '@rspack/cli'
-import { rspack, type Configuration } from '@rspack/core'
+import { rspack, type Compiler, type Configuration } from '@rspack/core'
 
 /**
  * 本机的构建变量放在不进仓库的 .env.local 里（每行 NAME=value，见 .env.example）；
@@ -28,6 +29,47 @@ const { version } = JSON.parse(
 const cssLoader = {
   loader: 'builtin:lightningcss-loader',
   options: { targets },
+}
+
+/**
+ * 生成 sw.js（源码见 src/pwa/sw.js）：填入缓存版本和首屏预缓存列表。
+ * 版本取全部产物文件名（含内容哈希）的摘要，任何文件变了就换新缓存。
+ */
+const serviceWorkerPlugin = {
+  apply(compiler: Compiler) {
+    compiler.hooks.thisCompilation.tap('ServiceWorker', (compilation) => {
+      compilation.hooks.processAssets.tap(
+        { name: 'ServiceWorker', stage: rspack.Compilation.PROCESS_ASSETS_STAGE_SUMMARIZE },
+        () => {
+          const assets = compilation
+            .getAssets()
+            .map((asset) => asset.name)
+            .sort()
+          const cacheVersion = createHash('sha256')
+            .update(`${version}\n${assets.join('\n')}`)
+            .digest('hex')
+            .slice(0, 12)
+          const entryFiles = [...(compilation.entrypoints.get('main')?.getFiles() ?? [])]
+          const precache = ['./', ...entryFiles, 'manifest.webmanifest']
+          const template = readFileSync(path.resolve(root, 'src/pwa/sw.js'), 'utf8')
+          // 只有清单里的路径会被 Service Worker 处理和缓存，其余同源请求（如同源接口）照常走网络
+          const placeholders = {
+            __CACHE_VERSION__: cacheVersion,
+            __PRECACHE__: precache,
+            __APP_FILES__: assets,
+          }
+          let source = template
+          for (const [placeholder, value] of Object.entries(placeholders)) {
+            if (source.split(placeholder).length !== 2) {
+              throw new Error(`src/pwa/sw.js must contain ${placeholder} exactly once`)
+            }
+            source = source.replace(placeholder, JSON.stringify(value))
+          }
+          compilation.emitAsset('sw.js', new rspack.sources.RawSource(source))
+        }
+      )
+    })
+  },
 }
 
 type ConfigOptions = {
@@ -106,8 +148,16 @@ export const createConfig = ({
         { from: path.resolve(root, 'LICENSE'), to: 'LICENSE', toType: 'file' },
         // 隐私政策是独立的静态页，Google OAuth 同意页和设置里的云端同步都链接到它
         { from: path.resolve(root, 'src/privacy.html'), to: 'privacy.html', toType: 'file' },
+        // PWA：图标和 manifest，index.html 用相对路径引用
+        { from: path.resolve(root, 'src/pwa/icons'), to: 'icons' },
+        {
+          from: path.resolve(root, 'src/pwa/manifest.webmanifest'),
+          to: 'manifest.webmanifest',
+          toType: 'file',
+        },
       ],
     }),
+    serviceWorkerPlugin,
   ],
   performance: { hints: false },
   devServer: { port: 8090, ...devServer },
