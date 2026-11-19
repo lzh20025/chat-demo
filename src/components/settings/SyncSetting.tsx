@@ -93,7 +93,8 @@ export const SyncSetting = ({ disabled }: { disabled: boolean }) => {
 
   return (
     <>
-      <div className={`${styles.cell} ${styles.row}`}>
+      {/* 开关同步时不借这次点击续期授权（见 googleDrive/auth.ts） */}
+      <div className={`${styles.cell} ${styles.row}`} data-no-auth-renewal>
         <div className={styles.text}>
           <div className={styles.label}>{t('syncTitle')}</div>
           <div className={styles.description}>
@@ -147,6 +148,7 @@ export const SyncSetting = ({ disabled }: { disabled: boolean }) => {
                   size="m"
                   className={styles.cellButton}
                   disabled={disabled || running}
+                  data-no-auth-renewal
                   onClick={() => void auth.disconnect()}
                 >
                   {t('syncDisconnect')}

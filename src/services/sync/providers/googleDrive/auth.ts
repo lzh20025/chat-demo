@@ -29,8 +29,12 @@ const EXPIRY_MARGIN = 60_000
 const RENEW_AHEAD = 10 * 60_000
 /** 提前续期没成功、手上的令牌还能用时，这么久之内不再借点击重试，免得每次点击都弹窗 */
 const RETRY_DELAY = 2 * 60_000
-/** 点在这些元素上是要输入：此时弹窗会抢走焦点，留到下一次点击 */
-const EDITABLE = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])'
+/**
+ * 点在这些元素上不续期：输入框（弹窗会抢走正在输入的焦点，留到下一次点击），
+ * 以及标了 data-no-auth-renewal 的操作，例如「断开」和关闭同步的开关，用户正要离开，不该弹出授权窗口。
+ */
+const NO_RENEWAL =
+  'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [data-no-auth-renewal]'
 
 type TokenResponse = {
   access_token?: string
@@ -82,6 +86,8 @@ const writeJson = (storage: () => Storage, key: string, value: unknown) => {
   }
 }
 
+/** 同步已开启且选中了 Google Drive；否则不续期，也不加载 Google 的脚本 */
+let active = false
 let token = readJson<Token>(() => sessionStorage, TOKEN_KEY)
 let account = readJson<SyncAccount>(() => localStorage, ACCOUNT_KEY)
 /** 续期没成功且没有可用令牌：同步暂停，直到用户点「继续同步」或「重新连接」 */
@@ -231,10 +237,10 @@ const renew = (client: GoogleOAuth) => {
 
 /** 页面上的点击（捕获阶段，先于按钮自己的处理）：令牌没了或快过期时顺势续期 */
 const renewOnClick = (event: MouseEvent) => {
-  if (!account || paused || renewing || tokenFresh() || Date.now() < retryAt) {
+  if (!active || !account || paused || renewing || tokenFresh() || Date.now() < retryAt) {
     return
   }
-  if (event.target instanceof Element && event.target.closest(EDITABLE)) {
+  if (event.target instanceof Element && event.target.closest(NO_RENEWAL)) {
     return
   }
   if (!oauth) {
@@ -247,10 +253,6 @@ const renewOnClick = (event: MouseEvent) => {
 
 if (CLIENT_ID && typeof window !== 'undefined') {
   window.addEventListener('click', renewOnClick, true)
-  if (account) {
-    // 连接过的设备随时可能需要续期，提前加载脚本，点击时才能立刻打开窗口
-    preloadGis()
-  }
 }
 
 const fetchAccount = async (accessToken: string): Promise<SyncAccount> => {
@@ -285,6 +287,14 @@ export const googleAuth: SyncAuth = {
     listeners.add(listener)
     return () => {
       listeners.delete(listener)
+    }
+  },
+
+  setActive(next) {
+    active = next
+    if (active && account && CLIENT_ID) {
+      // 正在同步的设备随时可能需要续期：提前加载脚本，点击时才能立刻打开窗口
+      preloadGis()
     }
   },
 

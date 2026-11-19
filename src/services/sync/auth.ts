@@ -18,6 +18,11 @@ export type SyncAuthState = { status: SyncAuthStatus; account?: SyncAccount }
 export interface SyncAuth {
   getState(): SyncAuthState
   subscribe(listener: () => void): () => void
+  /**
+   * 这家服务商是否正在被使用（同步已开启且选中了它）。不在使用时不应自行续期、加载登录脚本或打开授权窗口。
+   * 不需要后台续期的服务商可以不实现。
+   */
+  setActive?(active: boolean): void
   /** 界面即将展示连接按钮时调用：提前加载登录要用的脚本，点击后能立刻弹出窗口 */
   prepare?(): void
   /** 发起登录授权；会弹出服务商的窗口，必须在用户点击的回调里调用 */

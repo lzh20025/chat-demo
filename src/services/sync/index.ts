@@ -166,6 +166,14 @@ export const syncNow = (): Promise<void> => {
 
 let initialized = false
 
+/** 告诉各服务商自己是否正在被使用：没开同步或没选中它时，不应自行续期、加载登录脚本 */
+const updateActiveProvider = () => {
+  const active = useSettings.getState().syncEnabled ? activeSyncProvider() : undefined
+  for (const provider of listSyncProviders()) {
+    provider.auth?.setActive?.(provider === active)
+  }
+}
+
 /** 应用启动时调用一次：订阅本地改动、设置和授权的变化，按需触发同步 */
 export const initSync = () => {
   if (initialized) {
@@ -176,12 +184,14 @@ export const initSync = () => {
     .pruneSyncTombstones(Date.now() - TOMBSTONE_TTL)
     .catch(db.reportStorageError('prune sync tombstones'))
   db.onLocalChange(() => schedule(DEBOUNCE))
+  updateActiveProvider()
   onSyncedSettingsChange(() => schedule(DEBOUNCE))
   useSettings.subscribe((state, previous) => {
     if (
       state.syncEnabled !== previous.syncEnabled ||
       state.syncProvider !== previous.syncProvider
     ) {
+      updateActiveProvider()
       schedule(0)
     }
   })
