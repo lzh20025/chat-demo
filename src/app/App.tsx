@@ -3,6 +3,7 @@ import { useTranslate } from '../i18n/index.js'
 import { useSettings } from '../services/settings.js'
 import { useIsMobile, useMobileViewport, usePreventPageScroll } from './viewport.js'
 import { initMemory } from '../services/memory/store.js'
+import { initSync } from '../services/sync/index.js'
 import { useStorageNotice } from '../services/chat/db.js'
 import {
   bindChatPersistence,
@@ -73,6 +74,7 @@ export const App = () => {
   useEffect(() => {
     void initChat()
     void initMemory()
+    initSync()
     // 首次打开先在设置里输入 API Key
     ensureApiKey()
   }, [])

@@ -11,7 +11,6 @@ import { isNativeProvider, setThinking, useSettings } from '../../services/setti
 import { useIsMobile } from '../../app/viewport.js'
 import {
   sendMessage,
-  setNewChatTemporary,
   stopReply,
   useChatStore,
 } from '../../services/chat/store.js'
@@ -50,7 +49,7 @@ const isTemporarySession = (
   return Boolean(session?.temporary)
 }
 
-/** 输入框：自适应高度的文本框 + 文件 + 深度思考与临时对话开关 + 语音输入 + 发送 / 停止 */
+/** 输入框：自适应高度的文本框 + 文件 + 深度思考开关与临时对话标记 + 语音输入 + 发送 / 停止 */
 export const ChatInput = memo(function ChatInput({ sessionId }: { sessionId: string | null }) {
   // 切换目标时释放录音、转写和 DOM 状态；文字与附件由草稿服务保留。
   return <Input key={sessionId === null ? 'new' : `session:${sessionId}`} sessionId={sessionId} />
@@ -66,9 +65,9 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
     (state) => sessionId !== null && Object.hasOwn(state.streaming, sessionId)
   )
   const thinking = useSettings((state) => state.thinking)
-  // 新对话页可以切换临时对话；发出第一条消息后随会话固定，只显示、不能再切换
-  const temporary = useChatStore((state) =>
-    sessionId === null ? state.newChatTemporary : isTemporarySession(state, sessionId)
+  // 临时对话在新对话页右上角切换；发出第一条消息后随会话固定，这里只显示标记
+  const temporary = useChatStore(
+    (state) => sessionId !== null && isTemporarySession(state, sessionId)
   )
   // 语音和附件走 DeepSeek 的接口，其他服务商下隐藏
   const native = useSettings(isNativeProvider)
@@ -228,7 +227,7 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
         </div>
       </div>
       <div className={styles.functionRow}>
-        {/* 深度思考与临时对话开关，tooltip 在按钮上方；搜索由模型按需决定。放不下时只显示图标 */}
+        {/* 深度思考开关与临时对话标记，tooltip 在按钮上方；搜索由模型按需决定。放不下时只显示图标 */}
         <div ref={togglesRef} className={styles.toggles}>
           <Tooltip content={t('deactivatedThinkTooltip')}>
             <button
@@ -242,24 +241,16 @@ const Input = ({ sessionId }: { sessionId: string | null }) => {
               <span className={styles.toggleLabel}>{t('thinkingSwitch')}</span>
             </button>
           </Tooltip>
-          {/* 已有会话只在是临时对话时显示，保持选中且不可切换；用 aria-disabled 而不是 disabled，提示仍能出现 */}
-          {sessionId === null || temporary ? (
-            <Tooltip
-              content={t(
-                sessionId === null ? 'temporaryChatTooltip' : 'temporaryChatActiveTooltip'
-              )}
-            >
+          {/* 临时对话的开关在新对话页右上角；会话里只对临时对话显示一个固定选中的标记。
+              用 aria-disabled 而不是 disabled，提示仍能出现 */}
+          {sessionId !== null && temporary ? (
+            <Tooltip content={t('temporaryChatActiveTooltip')}>
               <button
                 type="button"
-                className={clsx(styles.toggle, temporary && styles.selected)}
+                className={clsx(styles.toggle, styles.selected)}
                 aria-label={t('temporaryChat')}
-                aria-pressed={temporary}
-                aria-disabled={sessionId === null ? undefined : true}
-                onClick={() => {
-                  if (sessionId === null) {
-                    setNewChatTemporary(!temporary)
-                  }
-                }}
+                aria-pressed
+                aria-disabled
               >
                 <IconTemporaryOutline14 />
                 <span className={styles.toggleLabel}>{t('temporaryChat')}</span>

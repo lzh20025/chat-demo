@@ -4,6 +4,50 @@
   display: flex;
 }
 
+/* 临时对话开关：固定在页面右上角，不参与问候语和输入框的排版 */
+.temporaryToggle {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  z-index: 1;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 18px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  background-color: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition-property: border, background;
+  transition-duration: 0.2s;
+
+  &:hover {
+    background-color: var(--dsw-alias-interactive-bg-hover);
+  }
+
+  &.selected {
+    background-color: var(--dsw-alias-button-ghost-active-fill);
+    color: var(--dsw-alias-brand-text);
+    border-color: var(--dsw-alias-button-ghost-active-border);
+
+    &:hover {
+      background-color: var(--dsw-alias-button-ghost-active-hover);
+    }
+  }
+}
+
 .welcome {
   display: flex;
   flex-direction: column;
@@ -16,8 +60,9 @@
   padding: 0 32px 64px;
 }
 
-/* 问候语和临时对话说明作为一组，移动端一起居中在输入框上方的空白里 */
+/* 临时对话说明绝对定位在问候语上方，出现与否都不改变问候语和输入框的位置 */
 .heading {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -40,7 +85,13 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  margin-top: 8px;
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  margin-bottom: 8px;
+  transform: translateX(-50%);
   font-size: 13px;
   line-height: 20px;
   text-align: center;
@@ -76,6 +127,12 @@
   .heading {
     flex-shrink: 0;
     margin: auto 0;
+  }
+
+  /* 与移动端顶栏的按钮同一行 */
+  .temporaryToggle {
+    top: 17px;
+    right: 12px;
   }
 
   .caveat {

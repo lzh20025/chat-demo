@@ -157,6 +157,28 @@ export const commit = async ({
   return result
 }
 
+/**
+ * 同步：用来自其他设备（或合并后）的记忆替换本地的。本地在同步规划之后又改动过时返回 false，留到下一轮。
+ * clearedAt 是合并后的清空时间：其他设备清空过记忆时，本机进行中的整理结果作废。
+ */
+export const applySyncedMemory = async (
+  state: db.MemorySyncState,
+  clearedAt: number,
+  sync: db.SyncWrite
+): Promise<boolean> => {
+  if (!(await db.applySyncedMemory(state, sync))) {
+    return false
+  }
+  if (clearedAt > readClearedAt()) {
+    writeClearedAt(clearedAt)
+    bumpEpoch()
+  }
+  await reload()
+  invalidateSnapshots()
+  broadcast()
+  return true
+}
+
 /** 元数据的初始值：还没有任何记录时使用 */
 export const emptyProfile = (): MemoryProfile => ({
   id: 'profile',
