@@ -403,6 +403,8 @@ export const en = {
   syncReconnect: 'Reconnect',
   syncDisconnect: 'Disconnect',
   syncConnectFailed: "Couldn't connect: {message}",
+  syncPausedNotice: 'Google Drive sync is paused until access for {account} is renewed.',
+  syncResume: 'Resume sync',
   syncStatus: 'Sync status',
   syncStatusOff: 'Turn on to sync automatically',
   syncStatusNotConnected: 'Connect an account to start syncing',

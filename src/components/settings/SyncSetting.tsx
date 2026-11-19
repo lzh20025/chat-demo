@@ -17,7 +17,7 @@ import styles from './Settings.module.css'
 const noSubscribe = () => () => {}
 
 /** 订阅服务商的授权状态；不需要登录的服务商为 null */
-const useAuthState = (auth: SyncAuth | null): SyncAuthState | null =>
+export const useAuthState = (auth: SyncAuth | null): SyncAuthState | null =>
   useSyncExternalStore(auth?.subscribe ?? noSubscribe, () => auth?.getState() ?? null)
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error))

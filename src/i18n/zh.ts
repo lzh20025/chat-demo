@@ -383,6 +383,8 @@ export const zh = {
   syncReconnect: '重新连接',
   syncDisconnect: '断开',
   syncConnectFailed: '连接失败：{message}',
+  syncPausedNotice: 'Google Drive 同步已暂停，需要重新授权 {account}',
+  syncResume: '继续同步',
   syncStatus: '同步状态',
   syncStatusOff: '开启后自动同步',
   syncStatusNotConnected: '连接账号后开始同步',

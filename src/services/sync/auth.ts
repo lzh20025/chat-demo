@@ -1,8 +1,8 @@
 /**
  * 同步服务商的授权。应用没有自己的账号系统，登录的是服务商的账号（如 Google）。
  * unconfigured：构建时没有提供必要的配置（如 OAuth Client ID）；
- * signedOut：还没有连接；signedIn：已连接且令牌有效；
- * expired：连接过，但令牌已过期且无法静默续期，需要用户再点一次连接。
+ * signedOut：还没有连接；signedIn：已连接（令牌可能需要续期，由服务商在合适的时机自动完成）；
+ * expired：连接过，但令牌已失效且自动续期没有成功，同步暂停，需要用户点一次「继续同步」或「重新连接」。
  */
 export type SyncAuthStatus = 'unconfigured' | 'signedOut' | 'signedIn' | 'expired'
 
@@ -24,6 +24,9 @@ export interface SyncAuth {
   connect(): Promise<void>
   /** 断开并撤销授权；已同步到远端的数据不受影响 */
   disconnect(): Promise<void>
-  /** 取一个可用的访问令牌；refresh 为 true 时丢弃手上的令牌重新获取。拿不到返回 null */
+  /**
+   * 取一个可用的访问令牌；refresh 为 true 时丢弃手上的令牌。拿不到返回 null，
+   * 例如续期需要等用户下一次点击：续期成功后服务商会通知订阅者，同步据此补上一轮。
+   */
   getToken(options?: { refresh?: boolean }): Promise<string | null>
 }
