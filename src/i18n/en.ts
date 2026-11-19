@@ -197,8 +197,8 @@ export const en = {
   settingDialogAsideMemoryOptionLabel: 'Memory',
   customInstructions: 'Custom instructions',
   customInstructionsDescription:
-    'Requirements you want every reply to follow. Only you edit them, they are separate from memory, and they apply as soon as you save.',
-  customInstructionsEmpty: 'Nothing yet.',
+    'Requirements you want every reply to follow. Apply as soon as you save.',
+  customInstructionsEmpty: 'Click "Edit" to input your instructions here...',
   customInstructionsPlaceholder: 'For example: keep answers short; use TypeScript in code samples.',
   memory: 'Memory',
   memoryStatusNever: 'Not organized yet',
@@ -225,7 +225,7 @@ export const en = {
   memoryTraceForgetChat: 'Stop using this chat',
   memoryTraceCorrectTitle: 'Correct this memory',
   memoryTraceCorrected: 'Corrected. New chats will use it.',
-  memoryTraceMuted: 'Noted. This will not be mentioned again.',
+  memoryTraceMuted: 'This will not be mentioned again.',
   memoryTraceMutedNote: 'Will not be mentioned again',
   memoryTraceChatForgotten: 'New chats will no longer use this chat.',
   memoryTraceChatForgottenNote: 'No longer used',
@@ -255,15 +255,14 @@ export const en = {
   storageOutdated: 'The app was updated in another tab. Reload this page to keep using it.',
   storageReload: 'Reload',
   // ---- memory settings ----
-  memoryPageIntro:
-    'Remembers things that help, so later replies fit you better. Stays in this browser only.',
+  memoryPageIntro: 'Remembers things that help, so later replies fit you better.',
   memoryPageLearnMore: 'Learn more',
   memoryPageAboutWhat:
     'What it remembers: basics about you, what you are working on, and your preferences. Private things like health are asked about first; passwords and keys are never saved.',
   memoryPageAboutUse:
     'How it is used: new chats refer to it automatically, so you do not have to repeat yourself. You can review, edit or delete it here at any time.',
   memoryPageAboutWhere:
-    'Where it lives: only in this browser. When memory is organized, chat content is sent to the API service you set up.',
+    'When memory is organized, chat content is sent to the API service you set up.',
   memoryPageFull:
     'Memory is full, so new things will not be added automatically. Delete a few to make room.',
   memoryPagePendingTitle: 'Remember these?',
@@ -355,7 +354,7 @@ export const en = {
   memoryNoticeCountRemoved: '{count} forgotten',
   memoryNoticeCountFull: '{count} not saved',
   memoryNoticeCountUndone: '{count} undone',
-  memoryListSeparator: ', ',
+  memoryListSeparator: ',',
   memoryNoticeUndo: 'Undo',
   memoryNoticeManage: 'Manage',
   memoryNoticeManageMemory: 'Manage memory',
@@ -389,6 +388,7 @@ export const en = {
   syncTitle: 'Cloud sync',
   syncDescription:
     'Automatically sync chats, memory, and preferences across your devices. Data is stored in your own cloud drive; API keys, attachment files, and temporary chats are never uploaded.',
+  syncPrivacyLink: 'Privacy policy',
   syncProvider: 'Sync to',
   syncProviderGoogleDrive: 'Google Drive',
   syncProviderMock: 'Local mock (dev only)',

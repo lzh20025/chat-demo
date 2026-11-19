@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Privacy Policy · 隐私政策 – Chat Demo</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --text: #0f1115;
+        --muted: #5c6370;
+        --line: #e3e6eb;
+        --bg: #ffffff;
+        --link: #3964fe;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --text: #f2f3f5;
+          --muted: #a2a8b3;
+          --line: #2c2f36;
+          --bg: #151517;
+          --link: #7b97ff;
+        }
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          16px/1.7 system-ui,
+          -apple-system,
+          'Segoe UI',
+          'PingFang SC',
+          'Microsoft YaHei',
+          sans-serif;
+      }
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 40px 20px 80px;
+      }
+      nav {
+        display: flex;
+        gap: 16px;
+        font-size: 14px;
+      }
+      h1 {
+        margin: 24px 0 4px;
+        font-size: 28px;
+        line-height: 1.3;
+      }
+      h2 {
+        margin: 32px 0 8px;
+        font-size: 18px;
+      }
+      p,
+      ul {
+        margin: 8px 0;
+      }
+      ul {
+        padding-left: 22px;
+      }
+      .meta {
+        color: var(--muted);
+        font-size: 14px;
+      }
+      a {
+        color: var(--link);
+      }
+      section + section {
+        margin-top: 64px;
+        padding-top: 24px;
+        border-top: 1px solid var(--line);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <nav>
+        <a href="./">← Chat Demo</a>
+        <a href="#en">English</a>
+        <a href="#zh" lang="zh-CN">中文</a>
+      </nav>
+
+      <section id="en" lang="en">
+        <h1>Privacy Policy</h1>
+        <p class="meta">Chat Demo · Last updated: November 19, 2026</p>
+
+        <p>
+          Chat Demo is an open-source chat app that runs entirely in your browser. It has no backend
+          of its own: we do not run a server that receives your data, and we do not use analytics,
+          ads or tracking cookies.
+        </p>
+
+        <h2>Data stored on your device</h2>
+        <p>
+          Your chats, attachments, memory, settings and API keys are stored in this browser
+          (localStorage and IndexedDB). They stay on your device unless you use one of the features
+          below.
+        </p>
+
+        <h2>Data sent to the AI service you choose</h2>
+        <p>
+          When you send a message, upload a file, use voice features or let memory be organized, the
+          relevant content is sent directly from your browser to the API service you set up in
+          Settings (DeepSeek by default, or another provider you choose), using your own API key.
+          That service handles the data under its own privacy policy.
+        </p>
+
+        <h2>Google Drive sync (optional)</h2>
+        <p>Cloud sync is off by default. If you turn it on and connect a Google account:</p>
+        <ul>
+          <li>
+            <strong>What the app can access.</strong> It requests only the
+            <code>drive.appdata</code> permission, which covers a hidden folder in your Google Drive
+            that belongs to this app. It cannot see, change or delete any of your other files. It
+            also reads your Google account's email address and account ID, to show which account is
+            connected and to keep data from different accounts apart.
+          </li>
+          <li>
+            <strong>What is stored there.</strong> Your chats, memory and preferences (such as
+            language, theme, model choices and custom instructions). API keys, attachment files and
+            temporary chats are never uploaded.
+          </li>
+          <li>
+            <strong>How it is used.</strong> Only to keep your own data in sync across your devices.
+            The data moves directly between your browser and Google Drive. It is not sent to us or
+            to anyone else, not used for advertising, and not used to train AI models.
+          </li>
+          <li>
+            <strong>Where sign-in details are kept.</strong> The access token stays in this browser
+            tab's session storage and expires in about an hour. The connected account's email
+            address and ID are kept in this browser's localStorage.
+          </li>
+        </ul>
+        <p>
+          The app's use of information received from Google APIs adheres to the
+          <a
+            href="https://developers.google.com/terms/api-services-user-data-policy"
+            target="_blank"
+            rel="noreferrer"
+            >Google API Services User Data Policy</a
+          >, including the Limited Use requirements.
+        </p>
+
+        <h2>Deleting your data</h2>
+        <ul>
+          <li>
+            <strong>On this device:</strong> delete chats or clear memory in Settings, or clear this
+            site's data in your browser.
+          </li>
+          <li>
+            <strong>Google access:</strong> select Disconnect in Settings → Data → Cloud sync, or
+            remove the app at
+            <a href="https://myaccount.google.com/connections" target="_blank" rel="noreferrer"
+              >myaccount.google.com/connections</a
+            >.
+          </li>
+          <li>
+            <strong>Synced data in Google Drive:</strong> open Google Drive → Settings → Manage
+            apps, find this app and choose "Delete hidden app data".
+          </li>
+        </ul>
+
+        <h2>Hosting</h2>
+        <p>
+          This site is served as static files by GitHub Pages. Like any web host, GitHub may log
+          technical details such as your IP address when the page loads; see
+          <a
+            href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement"
+            target="_blank"
+            rel="noreferrer"
+            >GitHub's privacy statement</a
+          >.
+        </p>
+
+        <h2>Changes and contact</h2>
+        <p>
+          If this policy changes, the updated version will be posted on this page with a new date.
+          Questions or requests can be raised at
+          <a href="https://github.com/lzh20025/chat-demo/issues" target="_blank" rel="noreferrer"
+            >github.com/lzh20025/chat-demo/issues</a
+          >.
+        </p>
+      </section>
+
+      <section id="zh" lang="zh-CN">
+        <h1>隐私政策</h1>
+        <p class="meta">
+          Chat Demo · 更新日期：2026 年 11 月 19 日 · 生效日期：2026 年 11 月 19 日
+        </p>
+
+        <p>
+          Chat
+          Demo（以下简称“本应用”）是一款开源的聊天应用，全部功能均在您的浏览器内运行。本政策说明本应用如何处理您的信息，请您在使用前仔细阅读。
+        </p>
+
+        <h2>一、基本原则</h2>
+        <p>
+          本应用不设后端服务器。我们不接收、不存储您的任何数据，亦不使用任何统计分析、广告或跟踪类
+          Cookie。
+        </p>
+
+        <h2>二、本地存储的信息</h2>
+        <p>
+          您的对话、附件、记忆、设置及 API Key 均存储于您当前使用的浏览器中（localStorage 与
+          IndexedDB）。除本政策第三条、第四条所述情形外，上述信息不会离开您的设备。
+        </p>
+
+        <h2>三、向第三方 AI 服务传输的信息</h2>
+        <p>
+          您发送消息、上传文件、使用语音功能或整理记忆时，相关内容将由您的浏览器使用您本人的 API Key
+          直接传输至您在设置中指定的 API 服务（默认为
+          DeepSeek，或您自行选择的其他服务商）。该等信息的处理适用相应服务商的隐私政策，我们对此不承担责任。
+        </p>
+
+        <h2>四、Google Drive 同步（可选功能）</h2>
+        <p>云端同步功能默认关闭。您开启该功能并关联 Google 账号后，适用以下规定：</p>
+        <ul>
+          <li>
+            <strong>访问范围。</strong>本应用仅申请 <code>drive.appdata</code> 权限，即仅可访问您的
+            Google Drive
+            中专属于本应用的隐藏目录，无法查看、修改或删除您的其他文件。此外，本应用将读取该 Google
+            账号的邮箱地址及账号标识符，用于显示当前关联的账号，并区分不同账号的数据。
+          </li>
+          <li>
+            <strong>存储内容。</strong
+            >同步的内容包括您的对话、记忆及偏好设置（如语言、主题、模型选择、自定义指令等）。API
+            Key、附件原件及临时对话不在同步范围之内。
+          </li>
+          <li>
+            <strong>使用目的。</strong>上述数据仅用于在您本人的设备之间进行同步。数据在您的浏览器与
+            Google Drive
+            之间直接传输，不向我们或任何第三方提供，不用于广告投放，亦不用于训练人工智能模型。
+          </li>
+          <li>
+            <strong>凭证的保存。</strong
+            >访问令牌仅保存于当前标签页的会话存储中，有效期约一小时；已关联账号的邮箱地址及账号标识符保存于当前浏览器的
+            localStorage 中。
+          </li>
+        </ul>
+        <p>
+          本应用对通过 Google API 获取的信息的使用及向其他应用的传输，遵守《<a
+            href="https://developers.google.com/terms/api-services-user-data-policy"
+            target="_blank"
+            rel="noreferrer"
+            >Google API 服务用户数据政策</a
+          >》，包括其中的“有限使用”要求。
+        </p>
+
+        <h2>五、数据的删除</h2>
+        <p>您可随时通过以下方式删除您的数据或撤销授权：</p>
+        <ul>
+          <li>
+            <strong>本地数据：</strong
+            >在本应用的设置中删除对话或清空记忆，或在浏览器中清除本站点的数据。
+          </li>
+          <li>
+            <strong>Google 授权：</strong>在“设置 → 数据管理 → 云端同步”中选择“断开”，或前往
+            <a href="https://myaccount.google.com/connections" target="_blank" rel="noreferrer"
+              >myaccount.google.com/connections</a
+            >
+            移除本应用的访问权限。
+          </li>
+          <li>
+            <strong>Google Drive 中的同步数据：</strong>进入 Google Drive 的“设置 →
+            管理应用”，找到本应用并选择“删除隐藏的应用数据”。
+          </li>
+        </ul>
+
+        <h2>六、网站托管</h2>
+        <p>
+          本应用以静态页面形式托管于 GitHub Pages。您访问本应用时，GitHub 可能依其自身政策记录 IP
+          地址等技术信息，详见《<a
+            href="https://docs.github.com/zh/site-policy/privacy-policies/github-general-privacy-statement"
+            target="_blank"
+            rel="noreferrer"
+            >GitHub 隐私声明</a
+          >》。
+        </p>
+
+        <h2>七、政策的变更</h2>
+        <p>我们可能适时修订本政策。修订后的版本将在本页面公布，并相应更新上述日期。</p>
+
+        <h2>八、联系方式</h2>
+        <p>
+          您对本政策有任何疑问或请求的，可通过
+          <a href="https://github.com/lzh20025/chat-demo/issues" target="_blank" rel="noreferrer"
+            >github.com/lzh20025/chat-demo/issues</a
+          >
+          与我们联系。
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

@@ -205,6 +205,15 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
+.link {
+  color: var(--dsw-alias-brand-text);
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
 .error {
   font-size: 12px;
   line-height: 18px;

@@ -102,7 +102,11 @@ export const createConfig = ({
       __GOOGLE_CLIENT_ID__: JSON.stringify(googleClientId),
     }),
     new rspack.CopyRspackPlugin({
-      patterns: [{ from: path.resolve(root, 'LICENSE'), to: 'LICENSE', toType: 'file' }],
+      patterns: [
+        { from: path.resolve(root, 'LICENSE'), to: 'LICENSE', toType: 'file' },
+        // 隐私政策是独立的静态页，Google OAuth 同意页和设置里的云端同步都链接到它
+        { from: path.resolve(root, 'src/privacy.html'), to: 'privacy.html', toType: 'file' },
+      ],
     }),
   ],
   performance: { hints: false },

@@ -96,7 +96,17 @@ export const SyncSetting = ({ disabled }: { disabled: boolean }) => {
       <div className={`${styles.cell} ${styles.row}`}>
         <div className={styles.text}>
           <div className={styles.label}>{t('syncTitle')}</div>
-          <div className={styles.description}>{t('syncDescription')}</div>
+          <div className={styles.description}>
+            {t('syncDescription')}{' '}
+            <a
+              className={styles.link}
+              href={`privacy.html#${locale === 'zh-CN' ? 'zh' : 'en'}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {t('syncPrivacyLink')}
+            </a>
+          </div>
         </div>
         <Switch
           checked={enabled}
