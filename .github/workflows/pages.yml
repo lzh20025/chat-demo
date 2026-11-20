@@ -54,6 +54,8 @@ jobs:
         env:
           # 云端同步用的 Google OAuth Client ID（公开标识，不是密钥）；未设置时同步显示为未配置
           GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+          # Dropbox 同步用的 App key（公开标识，不是密钥）；未设置时 Dropbox 显示为未配置
+          DROPBOX_APP_KEY: ${{ vars.DROPBOX_APP_KEY }}
 
       - name: Upload site
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
