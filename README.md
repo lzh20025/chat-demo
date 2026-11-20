@@ -16,13 +16,13 @@ Try it at [GitHub Pages](https://lzh20025.github.io/enhanced-chat-demo/), or ins
 
 ## What this fork adds
 
-Bring your own key (BYOK) for any provider, and bring your own storage (BYOS): your chats and memory live in your own Google Drive. There is still no server, database or account.
+Bring your own key (BYOK) for any provider, and bring your own storage (BYOS): your chats and memory live in your own Google Drive, Dropbox, or WebDAV server. There is still no server, database or account.
 
 |                           | [deepseek-ai/chat-demo](https://github.com/deepseek-ai/chat-demo) | This fork                                                                                                       |
 | ------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | AI providers (BYOK)       | DeepSeek only                                                     | DeepSeek, Anthropic, OpenAI, Gemini, or any OpenAI-compatible API, each with its own key, base URL, and model   |
 | Memory                    | None                                                              | With the DeepSeek provider, remembers facts and recent topics across chats; changes are shown and can be undone |
-| Cross-device sync (BYOS)  | None                                                              | Chats, memory, and preferences sync through your own Google Drive                                               |
+| Cross-device sync (BYOS)  | None                                                              | Chats, memory, and preferences sync through your own Google Drive, Dropbox, or WebDAV server (Nextcloud, etc.)  |
 | Custom instructions       | None                                                              | Yes                                                                                                             |
 | Temporary chats           | None                                                              | Not saved, not remembered, never synced                                                                         |
 | Model and thinking effort | Fixed                                                             | Selectable                                                                                                      |
@@ -48,7 +48,7 @@ To build the static site:
 pnpm build
 ```
 
-The output is written to `dist/`. Deploy it to a static web server or open `dist/index.html` directly. Opening the file directly requires browser and API support for storage and cross-origin requests from `file://` pages. Google sign-in does not support `file://` pages.
+The output is written to `dist/`. Deploy it to a static web server or open `dist/index.html` directly. Opening the file directly requires browser and API support for storage and cross-origin requests from `file://` pages. Google and Dropbox sign-in do not support `file://` pages.
 
 ## Features
 
@@ -58,7 +58,7 @@ The output is written to `dist/`. Deploy it to a static web server or open `dist
 - Markdown, syntax highlighting, KaTeX math, and Mermaid diagrams.
 - Simplified Chinese and English, light and dark themes, mobile layouts, location settings, and chat history import/export.
 - Memory, enabled by default: recent conversations are organized after replies and facts are extracted, with changes shown under replies and undoable. Sensitive facts require confirmation. View, add, edit, delete, or disable memory in Settings.
-- Optional cloud sync through your own Google Drive to keep conversations, memory, and selected preferences consistent across devices. API keys, attachment originals, temporary conversations, and some device-only settings are not synced.
+- Optional cloud sync through your own Google Drive, Dropbox, or WebDAV server (Nextcloud, etc.) to keep conversations, memory, and selected preferences consistent across devices. API keys, attachment originals, temporary conversations, and some device-only settings are not synced.
 - Installable as an app (PWA) on phones and desktops. After the first visit, it opens offline and shows your local chats; sending messages still needs a network connection.
 
 ## Data and privacy
@@ -67,7 +67,7 @@ API keys and settings are stored in browser `localStorage`; conversations, memor
 
 History import and export use ZIP archives. Import validates the archive and, after confirmation, merges it with local history without replacing existing conversations or attachments. Export includes conversations, exportable image originals, and memory, but not API keys or app settings. Original attachments that are not images are not fully exported.
 
-Settings → Data → Cloud sync is off by default. When enabled, it syncs conversations, memory, and preferences such as language, theme, model, effort, read-aloud voice, memory status, custom instructions, and per-provider models/base URLs. API keys, attachment originals, temporary conversations, and some device-only settings are excluded. Synced data moves directly between the browser and Google Drive.
+Settings → Data → Cloud sync is off by default. When enabled, it syncs conversations, memory, and preferences such as language, theme, model, effort, read-aloud voice, memory status, custom instructions, and per-provider models/base URLs. API keys, attachment originals, temporary conversations, and some device-only settings are excluded. Synced data moves directly between the browser and the storage you chose. Google Drive access lasts about an hour per authorization; Dropbox stays connected with a refresh token kept on the device; WebDAV uses the folder URL, username, and password you enter, also kept only on the device, and the server must allow requests from this site (CORS).
 
 <p align="center"><img src="docs/media/architecture.png" alt="Architecture: each browser talks directly to the AI provider and to the user's own Google Drive; there is no app server" width="100%"></p>
 
@@ -90,7 +90,7 @@ Settings → Data → Delete all chats asks for confirmation, then clears local 
 
 Settings → Data lets you choose DeepSeek, Anthropic, OpenAI, Gemini, or a custom OpenAI-compatible service. DeepSeek is the default. Other providers offer basic chat, including thinking and effort settings, but do not expose this app's search, link-reading, attachment, speech, title-generation, or memory extensions. API key, base URL, and model settings are kept separately for each provider.
 
-[rspack.config.ts](rspack.config.ts) uses `https://api.deepseek.com` by default. `createConfig({ apiOrigin, googleClientId, devServer })` can customize the API origin, Google OAuth client ID, and development server. To enable Google sync locally, copy `.env.example` to `.env.local` and set `GOOGLE_CLIENT_ID`. The client ID is a public identifier, not a secret. The build copies the privacy policy to `dist/privacy.html`, copies the PWA manifest and icons, and generates `dist/sw.js`. The service worker is registered only in production builds served over HTTPS or localhost.
+[rspack.config.ts](rspack.config.ts) uses `https://api.deepseek.com` by default. `createConfig({ apiOrigin, googleClientId, dropboxAppKey, devServer })` can customize the API origin, Google OAuth client ID, Dropbox app key, and development server. To enable Google Drive or Dropbox sync locally, copy `.env.example` to `.env.local` and set `GOOGLE_CLIENT_ID` or `DROPBOX_APP_KEY`. Both are public identifiers, not secrets; setup steps are in [src/services/sync/README.md](src/services/sync/README.md) (Chinese). WebDAV needs no build configuration. The build copies the privacy policy to `dist/privacy.html`, copies the PWA manifest and icons, and generates `dist/sw.js`. The service worker is registered only in production builds served over HTTPS or localhost.
 
 DeepSeek uses `deepseek-flash` by default through Anthropic-compatible Messages/Files APIs. Speech features use ASR/TTS endpoints. Search, link reading, title generation, and memory depend on DeepSeek's extended APIs.
 
@@ -106,7 +106,7 @@ src/
     memory/            Memory extraction, organization, and management
     markdown/          Markdown parsing, syntax highlighting, and diagrams
     speech/            Audio recording and read-aloud playback
-    sync/              Cloud sync and Google Drive
+    sync/              Cloud sync: Google Drive, Dropbox, WebDAV
   utils/               Shared utilities
 ```
 

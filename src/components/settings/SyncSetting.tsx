@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { useTranslate, type TranslationMessage } from '../../i18n/index.js'
 import { setSyncEnabled, setSyncProvider, useSettings } from '../../services/settings.js'
 import type { SyncAuth, SyncAuthState } from '../../services/sync/auth.js'
+import type { SyncConnectField } from '../../services/sync/provider.js'
 import {
   activeSyncProvider,
   availableSyncProviders,
@@ -12,6 +13,7 @@ import { Button } from '../base/Button.js'
 import { Select } from '../base/Select.js'
 import { Switch } from '../base/Switch.js'
 import { showToast } from '../base/toastState.js'
+import { forgetSettingsForReturn, rememberSettingsForReturn } from './settingsDialogState.js'
 import styles from './Settings.module.css'
 
 const noSubscribe = () => () => {}
@@ -21,6 +23,70 @@ export const useAuthState = (auth: SyncAuth | null): SyncAuthState | null =>
   useSyncExternalStore(auth?.subscribe ?? noSubscribe, () => auth?.getState() ?? null)
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error))
+
+/** 需要填写信息才能连接的服务商（如 WebDAV）：地址、用户名、密码等，提交时连接 */
+const ConnectForm = ({
+  fields,
+  defaults,
+  submitLabel,
+  busy,
+  onSubmit,
+}: {
+  fields: SyncConnectField[]
+  defaults: Record<string, string>
+  submitLabel: string
+  busy: boolean
+  onSubmit: (values: Record<string, string>) => void
+}) => {
+  const t = useTranslate()
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(fields.map((field) => [field.key, defaults[field.key] ?? '']))
+  )
+  const complete = fields.every((field) => values[field.key]?.trim())
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (complete && !busy) {
+          onSubmit(Object.fromEntries(fields.map((field) => [field.key, values[field.key].trim()])))
+        }
+      }}
+    >
+      {fields.map((field) => (
+        <div key={field.key} className={styles.cell}>
+          <label className={styles.apiKey}>
+            <div className={styles.label}>{t(field.label)}</div>
+            <div className={styles.apiKeyInput}>
+              <input
+                type={field.type}
+                name={field.key}
+                placeholder={field.placeholder}
+                autoComplete={field.autoComplete ?? 'off'}
+                spellCheck={false}
+                value={values[field.key]}
+                onChange={(event) =>
+                  setValues((current) => ({ ...current, [field.key]: event.target.value }))
+                }
+              />
+            </div>
+          </label>
+        </div>
+      ))}
+      <div className={`${styles.cell} ${styles.row}`}>
+        <div className={styles.text} />
+        <Button
+          type="submit"
+          variant="outlined"
+          size="m"
+          className={styles.cellButton}
+          disabled={busy || !complete}
+        >
+          {submitLabel}
+        </Button>
+      </div>
+    </form>
+  )
+}
 
 /**
  * 设置 →「数据管理」里的云端同步：开关、同步到哪里、连接的账号和同步状态。
@@ -51,12 +117,14 @@ export const SyncSetting = ({ disabled }: { disabled: boolean }) => {
   const accountStatus: TranslationMessage & { error?: boolean } = !auth
     ? { key: 'syncAccountNone' }
     : authState?.status === 'unconfigured'
-      ? { key: 'syncAccountUnconfigured' }
+      ? { key: 'syncAccountUnconfigured', params: { provider: t(provider.label) } }
       : authState?.status === 'signedIn'
         ? { key: 'syncAccountSignedIn', params: { account } }
         : authState?.status === 'expired'
           ? { key: 'syncAccountExpired', params: { account }, error: true }
-          : { key: 'syncAccountSignedOut' }
+          : authState?.error
+            ? { key: 'syncConnectFailed', params: { message: authState.error }, error: true }
+            : { key: 'syncAccountSignedOut' }
 
   const syncStatus: TranslationMessage & { error?: boolean } = !enabled
     ? { key: 'syncStatusOff' }
@@ -73,13 +141,23 @@ export const SyncSetting = ({ disabled }: { disabled: boolean }) => {
               }
             : { key: 'syncStatusNever' }
 
-  const connect = async () => {
+  const fields = provider.connectFields ?? []
+  // 有表单的服务商（如 WebDAV）在没连接或授权失效时显示表单，代替「连接」按钮
+  const showForm =
+    fields.length > 0 &&
+    auth !== null &&
+    authState?.status !== 'signedIn' &&
+    authState?.status !== 'unconfigured'
+
+  const connect = async (values?: Record<string, string>) => {
     if (!auth) {
       return
     }
     setConnecting(true)
+    // 有的服务商会跳转到授权页再回来，回来后重新打开设置；没有跳转（弹窗、表单）时在下面清掉
+    rememberSettingsForReturn('data')
     try {
-      await auth.connect()
+      await auth.connect(values)
     } catch (reason) {
       showToast({
         key: 'syncConnectFailed',
@@ -87,6 +165,7 @@ export const SyncSetting = ({ disabled }: { disabled: boolean }) => {
         type: 'error',
       })
     } finally {
+      forgetSettingsForReturn()
       setConnecting(false)
     }
   }
@@ -147,7 +226,7 @@ export const SyncSetting = ({ disabled }: { disabled: boolean }) => {
                 <div className={styles.description}>{t(provider.note)}</div>
               ) : null}
             </div>
-            {auth && authState?.status !== 'unconfigured' ? (
+            {auth && authState?.status !== 'unconfigured' && !showForm ? (
               authState?.status === 'signedIn' ? (
                 <Button
                   variant="outlined"
@@ -171,6 +250,16 @@ export const SyncSetting = ({ disabled }: { disabled: boolean }) => {
               )
             ) : null}
           </div>
+          {showForm ? (
+            <ConnectForm
+              key={provider.id}
+              fields={fields}
+              defaults={auth?.connectDefaults?.() ?? {}}
+              submitLabel={t(authState?.status === 'expired' ? 'syncReconnect' : 'syncConnect')}
+              busy={disabled || connecting}
+              onSubmit={(values) => void connect(values)}
+            />
+          ) : null}
           <div className={`${styles.cell} ${styles.row}`}>
             <div className={styles.text}>
               <div className={styles.label}>{t('syncStatus')}</div>

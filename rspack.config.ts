@@ -77,6 +77,8 @@ type ConfigOptions = {
   apiOrigin?: string
   /** Google OAuth Client ID，注入为 __GOOGLE_CLIENT_ID__；为空时云端同步显示为未配置 */
   googleClientId?: string
+  /** Dropbox App key，注入为 __DROPBOX_APP_KEY__；为空时 Dropbox 同步显示为未配置 */
+  dropboxAppKey?: string
   /** 开发服务器配置，支持本地接口代理 */
   devServer?: Configuration['devServer']
 }
@@ -85,6 +87,7 @@ type ConfigOptions = {
 export const createConfig = ({
   apiOrigin = 'https://api.deepseek.com',
   googleClientId = process.env.GOOGLE_CLIENT_ID ?? '',
+  dropboxAppKey = process.env.DROPBOX_APP_KEY ?? '',
   devServer,
 }: ConfigOptions = {}): Configuration => ({
   mode: dev ? 'development' : 'production',
@@ -142,6 +145,7 @@ export const createConfig = ({
     new rspack.DefinePlugin({
       __API_ORIGIN__: JSON.stringify(apiOrigin),
       __GOOGLE_CLIENT_ID__: JSON.stringify(googleClientId),
+      __DROPBOX_APP_KEY__: JSON.stringify(dropboxAppKey),
     }),
     new rspack.CopyRspackPlugin({
       patterns: [

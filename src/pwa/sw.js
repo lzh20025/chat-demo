@@ -63,10 +63,12 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (request.mode === 'navigate') {
-    // 页面联网优先：部署后立刻用上新版本；断网时用上次打开的副本，没有就用应用首页
+    // 页面联网优先：部署后立刻用上新版本；断网时用上次打开的副本，没有就用应用首页。
+    // 缓存时去掉查询参数：从授权页回来时地址里带着一次性的授权码，不能写进缓存
+    const url = new URL(request.url)
     event.respondWith(
       fetch(request)
-        .then((response) => store(request, response))
+        .then((response) => store(new Request(url.origin + url.pathname), response))
         .catch(async () => {
           const cached =
             (await caches.match(request, { ignoreSearch: true })) ??

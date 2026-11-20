@@ -13,8 +13,10 @@ import {
   registerSyncProvider,
   type SyncProvider,
 } from './provider.js'
+import { dropboxProvider } from './providers/dropbox/index.js'
 import { googleDriveProvider } from './providers/googleDrive/index.js'
 import { mockProvider } from './providers/mock.js'
+import { webdavProvider } from './providers/webdav/index.js'
 
 /**
  * 云端同步的装配与调度：注册内置的服务商和数据种类，决定什么时候跑一轮同步。
@@ -29,6 +31,8 @@ registerSyncCollection(memoryCollection)
 registerSyncCollection(settingsCollection)
 
 registerSyncProvider(googleDriveProvider)
+registerSyncProvider(dropboxProvider)
+registerSyncProvider(webdavProvider)
 if (DEV) {
   registerSyncProvider(mockProvider)
 }

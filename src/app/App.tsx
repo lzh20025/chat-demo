@@ -17,7 +17,10 @@ import { closeSearchPanel } from '../components/search/searchPanelState.js'
 import { SessionView } from '../components/session/SessionView.js'
 import { MobileHeader } from '../components/session/MobileHeader.js'
 import { Welcome } from '../components/session/Welcome.js'
-import { ensureApiKey } from '../components/settings/settingsDialogState.js'
+import {
+  ensureApiKey,
+  restoreSettingsAfterReturn,
+} from '../components/settings/settingsDialogState.js'
 import { SettingsDialog } from '../components/settings/SettingsDialog.js'
 import { SyncPausedNotice } from '../components/settings/SyncPausedNotice.js'
 import { Toast } from '../components/base/Toast.js'
@@ -76,8 +79,10 @@ export const App = () => {
     void initChat()
     void initMemory()
     initSync()
-    // 首次打开先在设置里输入 API Key
-    ensureApiKey()
+    // 首次打开先在设置里输入 API Key；从云端同步的授权页回来时重新打开设置
+    if (ensureApiKey()) {
+      restoreSettingsAfterReturn()
+    }
   }, [])
 
   return (

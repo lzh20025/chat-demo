@@ -84,7 +84,7 @@
 
       <section id="en" lang="en">
         <h1>Privacy Policy</h1>
-        <p class="meta">Chat Demo · Last updated: November 19, 2026</p>
+        <p class="meta">Chat Demo · Last updated: November 20, 2026</p>
 
         <p>
           Chat Demo is an open-source chat app that runs entirely in your browser. It has no backend
@@ -150,6 +150,50 @@
           >, including the Limited Use requirements.
         </p>
 
+        <h2>Dropbox sync (optional)</h2>
+        <p>If you choose Dropbox under "Sync to" and connect a Dropbox account:</p>
+        <ul>
+          <li>
+            <strong>What the app can access.</strong> It uses Dropbox's "App folder" access, which
+            covers only this app's own folder under Apps in your Dropbox. It cannot see, change or
+            delete any of your other files. It also reads your Dropbox account's email address and
+            account ID, to show which account is connected and to keep data from different accounts
+            apart.
+          </li>
+          <li>
+            <strong>What is stored there.</strong> The same as Google Drive sync: your chats, memory
+            and preferences. API keys, attachment files and temporary chats are never uploaded.
+          </li>
+          <li>
+            <strong>How it is used.</strong> Only to keep your own data in sync across your devices.
+            The data moves directly between your browser and Dropbox. It is not sent to us or to
+            anyone else, not used for advertising, and not used to train AI models.
+          </li>
+          <li>
+            <strong>Where sign-in details are kept.</strong> A refresh token, which keeps you
+            connected without asking again, is kept in this browser's localStorage together with the
+            account's email address and ID. The short-lived access token stays in this tab's session
+            storage. Disconnecting deletes them from this browser and revokes the app's access in
+            Dropbox.
+          </li>
+        </ul>
+
+        <h2>WebDAV sync (optional)</h2>
+        <p>If you choose WebDAV under "Sync to" and enter a server:</p>
+        <ul>
+          <li>
+            <strong>Where the data goes.</strong> Your chats, memory and preferences are saved in
+            the folder you enter on that WebDAV server, for example your own Nextcloud. The server
+            is run by you or by a provider you chose, and its operator's privacy policy applies. API
+            keys, attachment files and temporary chats are never uploaded.
+          </li>
+          <li>
+            <strong>Where sign-in details are kept.</strong> The folder address, username and
+            password are kept in this browser's localStorage and are sent only to that server. We
+            recommend an app password that you can revoke on the server.
+          </li>
+        </ul>
+
         <h2>Deleting your data</h2>
         <ul>
           <li>
@@ -166,6 +210,21 @@
           <li>
             <strong>Synced data in Google Drive:</strong> open Google Drive → Settings → Manage
             apps, find this app and choose "Delete hidden app data".
+          </li>
+          <li>
+            <strong>Dropbox:</strong> select Disconnect in Settings → Data → Cloud sync, or remove
+            the app at
+            <a
+              href="https://www.dropbox.com/account/connected_apps"
+              target="_blank"
+              rel="noreferrer"
+              >dropbox.com/account/connected_apps</a
+            >. Synced data is in this app's folder under Apps in your Dropbox; delete that folder to
+            remove it.
+          </li>
+          <li>
+            <strong>WebDAV:</strong> select Disconnect in Settings, delete the sync folder on your
+            server, and revoke the app password there if you used one.
           </li>
         </ul>
 
@@ -194,7 +253,7 @@
       <section id="zh" lang="zh-CN">
         <h1>隐私政策</h1>
         <p class="meta">
-          Chat Demo · 更新日期：2026 年 11 月 19 日 · 生效日期：2026 年 11 月 19 日
+          Chat Demo · 更新日期：2026 年 11 月 20 日 · 生效日期：2026 年 11 月 20 日
         </p>
 
         <p>
@@ -218,7 +277,7 @@
         <h2>二、本地存储的信息</h2>
         <p>
           您的对话、附件、记忆、设置及 API Key 均存储于您当前使用的浏览器中（localStorage 与
-          IndexedDB）。除本政策第三条、第四条所述情形外，上述信息不会离开您的设备。
+          IndexedDB）。除本政策第三条至第六条所述情形外，上述信息不会离开您的设备。
         </p>
 
         <h2>三、向第三方 AI 服务传输的信息</h2>
@@ -262,7 +321,47 @@
           >》，包括其中的“有限使用”要求。
         </p>
 
-        <h2>五、数据的删除</h2>
+        <h2>五、Dropbox 同步（可选功能）</h2>
+        <p>您在“同步到”中选择 Dropbox 并关联 Dropbox 账号后，适用以下规定：</p>
+        <ul>
+          <li>
+            <strong>访问范围。</strong>本应用使用 Dropbox 的“App folder”权限，仅可访问您 Dropbox 中
+            Apps 下专属于本应用的文件夹，无法查看、修改或删除您的其他文件。此外，本应用将读取该
+            Dropbox 账号的邮箱地址及账号标识符，用于显示当前关联的账号，并区分不同账号的数据。
+          </li>
+          <li>
+            <strong>存储内容。</strong>与 Google Drive 同步相同：您的对话、记忆及偏好设置。API
+            Key、附件原件及临时对话不在同步范围之内。
+          </li>
+          <li>
+            <strong>使用目的。</strong>上述数据仅用于在您本人的设备之间进行同步。数据在您的浏览器与
+            Dropbox
+            之间直接传输，不向我们或任何第三方提供，不用于广告投放，亦不用于训练人工智能模型。
+          </li>
+          <li>
+            <strong>凭证的保存。</strong>用于保持连接、无需再次授权的刷新令牌（refresh
+            token）以及已关联账号的邮箱地址和账号标识符，保存于当前浏览器的 localStorage
+            中；有效期较短的访问令牌保存于当前标签页的会话存储中。断开连接时，上述信息将从当前浏览器中删除，并在
+            Dropbox 中撤销本应用的授权。
+          </li>
+        </ul>
+
+        <h2>六、WebDAV 同步（可选功能）</h2>
+        <p>您在“同步到”中选择 WebDAV 并填写服务器信息后，适用以下规定：</p>
+        <ul>
+          <li>
+            <strong>数据去向。</strong>您的对话、记忆及偏好设置将保存在您所填写的 WebDAV
+            服务器文件夹中（例如您自己的
+            Nextcloud）。该服务器由您本人或您选择的服务商运营，适用其运营方的隐私政策。API
+            Key、附件原件及临时对话不在同步范围之内。
+          </li>
+          <li>
+            <strong>凭证的保存。</strong>文件夹地址、用户名及密码保存于当前浏览器的 localStorage
+            中，仅发送至该服务器。建议使用可在服务器上随时撤销的应用专用密码。
+          </li>
+        </ul>
+
+        <h2>七、数据的删除</h2>
         <p>您可随时通过以下方式删除您的数据或撤销授权：</p>
         <ul>
           <li>
@@ -280,9 +379,23 @@
             <strong>Google Drive 中的同步数据：</strong>进入 Google Drive 的“设置 →
             管理应用”，找到本应用并选择“删除隐藏的应用数据”。
           </li>
+          <li>
+            <strong>Dropbox：</strong>在“设置 → 数据管理 → 云端同步”中选择“断开”，或前往
+            <a
+              href="https://www.dropbox.com/account/connected_apps"
+              target="_blank"
+              rel="noreferrer"
+              >dropbox.com/account/connected_apps</a
+            >
+            移除本应用。同步数据位于您 Dropbox 中 Apps 下本应用的文件夹，删除该文件夹即可。
+          </li>
+          <li>
+            <strong>WebDAV：</strong
+            >在设置中选择“断开”，删除服务器上的同步文件夹；如使用了应用专用密码，请在服务器上将其撤销。
+          </li>
         </ul>
 
-        <h2>六、网站托管</h2>
+        <h2>八、网站托管</h2>
         <p>
           本应用以静态页面形式托管于 GitHub Pages。您访问本应用时，GitHub 可能依其自身政策记录 IP
           地址等技术信息，详见《<a
@@ -293,10 +406,10 @@
           >》。
         </p>
 
-        <h2>七、政策的变更</h2>
+        <h2>九、政策的变更</h2>
         <p>我们可能适时修订本政策。修订后的版本将在本页面公布，并相应更新上述日期。</p>
 
-        <h2>八、联系方式</h2>
+        <h2>十、联系方式</h2>
         <p>
           您对本政策有任何疑问或请求的，可通过
           <a href="https://github.com/lzh20025/chat-demo/issues" target="_blank" rel="noreferrer"

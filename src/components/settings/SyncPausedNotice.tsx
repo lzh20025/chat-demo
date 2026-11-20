@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslate } from '../../i18n/index.js'
 import { useSettings } from '../../services/settings.js'
 import { activeSyncProvider } from '../../services/sync/index.js'
+import { openSettings } from './settingsDialogState.js'
 import { Button } from '../base/Button.js'
 import { showToast } from '../base/toastState.js'
 import { useAuthState } from './SyncSetting.js'
@@ -15,7 +16,10 @@ export const SyncPausedNotice = ({ className }: { className: string }) => {
   const t = useTranslate()
   const enabled = useSettings((state) => state.syncEnabled)
   const providerId = useSettings((state) => state.syncProvider)
-  const auth = activeSyncProvider(providerId)?.auth ?? null
+  const provider = activeSyncProvider(providerId)
+  const auth = provider?.auth ?? null
+  // 要重新填写信息的服务商（如 WebDAV 改了密码）不能就地继续，打开设置里的表单
+  const needsForm = (provider?.connectFields?.length ?? 0) > 0
   const authState = useAuthState(auth)
   const [resuming, setResuming] = useState(false)
 
@@ -24,6 +28,10 @@ export const SyncPausedNotice = ({ className }: { className: string }) => {
   }
 
   const resume = async () => {
+    if (needsForm) {
+      openSettings('data')
+      return
+    }
     setResuming(true)
     try {
       await auth.connect()
@@ -40,9 +48,14 @@ export const SyncPausedNotice = ({ className }: { className: string }) => {
 
   return (
     <div className={className} role="status">
-      <span>{t('syncPausedNotice', { account: authState.account?.label ?? '' })}</span>
+      <span>
+        {t('syncPausedNotice', {
+          provider: provider ? t(provider.label) : '',
+          account: authState.account?.label ?? '',
+        })}
+      </span>
       <Button variant="outlined" size="s" disabled={resuming} onClick={() => void resume()}>
-        {t('syncResume')}
+        {t(needsForm ? 'syncOpenSettings' : 'syncResume')}
       </Button>
     </div>
   )
