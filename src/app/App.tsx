@@ -19,6 +19,7 @@ import { MobileHeader } from '../components/session/MobileHeader.js'
 import { Welcome } from '../components/session/Welcome.js'
 import { ensureApiKey } from '../components/settings/settingsDialogState.js'
 import { SettingsDialog } from '../components/settings/SettingsDialog.js'
+import { SyncPausedNotice } from '../components/settings/SyncPausedNotice.js'
 import { Toast } from '../components/base/Toast.js'
 import { showToast } from '../components/base/toastState.js'
 import { onUploadNotice } from '../services/attachments.js'
@@ -107,6 +108,7 @@ export const App = () => {
               </Button>
             </div>
           ) : null}
+          <SyncPausedNotice className={styles.saveError} />
           <div className={styles.content}>
             {siderCollapsed ? <CollapsedSider /> : null}
             {!ready || (activeId !== null && !session) ? (

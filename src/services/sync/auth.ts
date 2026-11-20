@@ -2,7 +2,7 @@
  * 同步服务商的授权。应用没有自己的账号系统，登录的是服务商的账号（如 Google）。
  * unconfigured：构建时没有提供必要的配置（如 OAuth Client ID）；
  * signedOut：还没有连接；signedIn：已连接且令牌有效；
- * expired：连接过，但令牌已过期且无法静默续期，需要用户再点一次连接。
+ * expired：连接过，但令牌已过期且无法静默续期，同步暂停；主界面顶部提示，需要用户再点一次连接。
  */
 export type SyncAuthStatus = 'unconfigured' | 'signedOut' | 'signedIn' | 'expired'
 

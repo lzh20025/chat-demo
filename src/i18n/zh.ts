@@ -372,6 +372,8 @@ export const zh = {
   syncPrivacyLink: '隐私政策',
   syncProvider: '同步到',
   syncProviderGoogleDrive: 'Google Drive',
+  syncProviderGoogleDriveNote:
+    '由于 Google 政策限制，无后端的 web app 每次授权只能使用约 1 小时。过期或重新打开应用后，需要重新授权才能继续同步。',
   syncProviderMock: '本地模拟（仅开发）',
   syncAccount: '账号',
   syncAccountSignedOut: '尚未连接',
@@ -383,6 +385,8 @@ export const zh = {
   syncReconnect: '重新连接',
   syncDisconnect: '断开',
   syncConnectFailed: '连接失败：{message}',
+  syncPausedNotice: 'Google Drive 同步已暂停，需要重新授权 {account}',
+  syncResume: '继续同步',
   syncStatus: '同步状态',
   syncStatusOff: '开启后自动同步',
   syncStatusNotConnected: '连接账号后开始同步',

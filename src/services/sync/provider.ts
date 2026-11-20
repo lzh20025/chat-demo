@@ -10,6 +10,8 @@ export type SyncProvider = {
   id: string
   /** 界面上的名字 */
   label: TranslationKey
+  /** 选中时显示在「同步到」下面的说明，如服务商的限制 */
+  note?: TranslationKey
   /** 只在开发构建里出现（如本地模拟后端） */
   devOnly?: boolean
   /** 不需要登录的服务商为 null */

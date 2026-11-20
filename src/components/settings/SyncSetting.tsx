@@ -17,7 +17,7 @@ import styles from './Settings.module.css'
 const noSubscribe = () => () => {}
 
 /** 订阅服务商的授权状态；不需要登录的服务商为 null */
-const useAuthState = (auth: SyncAuth | null): SyncAuthState | null =>
+export const useAuthState = (auth: SyncAuth | null): SyncAuthState | null =>
   useSyncExternalStore(auth?.subscribe ?? noSubscribe, () => auth?.getState() ?? null)
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error))
@@ -121,6 +121,9 @@ export const SyncSetting = ({ disabled }: { disabled: boolean }) => {
             <div className={`${styles.cell} ${styles.row}`}>
               <div className={styles.text}>
                 <div className={styles.label}>{t('syncProvider')}</div>
+                {provider.note ? (
+                  <div className={styles.description}>{t(provider.note)}</div>
+                ) : null}
               </div>
               <Select
                 value={provider.id}
@@ -139,6 +142,10 @@ export const SyncSetting = ({ disabled }: { disabled: boolean }) => {
               <div className={accountStatus.error ? styles.error : styles.description}>
                 {t(accountStatus.key, accountStatus.params)}
               </div>
+              {/* 只有一个服务商时不显示「同步到」，说明放在这里 */}
+              {providers.length <= 1 && provider.note ? (
+                <div className={styles.description}>{t(provider.note)}</div>
+              ) : null}
             </div>
             {auth && authState?.status !== 'unconfigured' ? (
               authState?.status === 'signedIn' ? (

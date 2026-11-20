@@ -7,7 +7,7 @@ import type { SyncAccount, SyncAuth, SyncAuthState } from '../../auth.js'
  * 只申请 drive.appdata：应用只能读写自己在云端硬盘里的隐藏数据目录，看不到用户的其他文件。
  *
  * 这种模式拿不到 refresh token，访问令牌约一小时过期。过期后先尝试静默续期（不弹同意页）；
- * 浏览器拦截了弹窗或需要重新同意时进入 expired，等用户再点一次「重新连接」。
+ * 浏览器拦截了弹窗或需要重新同意时进入 expired：主界面顶部提示，用户点「继续同步」或「重新连接」。
  * 令牌只放在内存和 sessionStorage，不进 localStorage，也不参与同步。
  */
 
@@ -140,7 +140,10 @@ const loadGis = (): Promise<GoogleOAuth> =>
     throw error
   }))
 
-/** silent：不弹同意页，只用于续期；浏览器可能因为没有用户操作而拦截弹窗 */
+/**
+ * silent：只在需要时显示同意页，用于续期和重新连接同一个账号；
+ * 后台续期时浏览器可能因为没有用户操作而拦截弹窗
+ */
 const requestToken = async (silent: boolean): Promise<Token> => {
   const oauth = await loadGis()
   return new Promise<Token>((resolve, reject) => {
@@ -218,7 +221,8 @@ export const googleAuth: SyncAuth = {
     if (!CLIENT_ID) {
       throw new Error('Google OAuth client ID is not configured')
     }
-    const next = await requestToken(false)
+    // 重新连接同一个账号（如横幅上的「继续同步」）时不再让用户选账号、确认授权
+    const next = await requestToken(account !== null)
     // 先确认拿到的是哪个账号，再认为连接成功
     const nextAccount = await fetchAccount(next.value)
     setToken(next)
