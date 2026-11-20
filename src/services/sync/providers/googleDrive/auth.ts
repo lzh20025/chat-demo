@@ -6,13 +6,8 @@ import type { SyncAccount, SyncAuth, SyncAuthState } from '../../auth.js'
  * Google 账号授权：用 Google Identity Services 的令牌模式，全程在浏览器里完成，不需要后端，也没有 client secret。
  * 只申请 drive.appdata：应用只能读写自己在云端硬盘里的隐藏数据目录，看不到用户的其他文件。
  *
- * 这种模式拿不到 refresh token，访问令牌约一小时过期，续期要打开 Google 的授权窗口；
- * 浏览器只允许在用户点击时打开窗口，后台同步里打开一定会被拦截。所以：
- * - 后台不打开窗口：令牌没了或快过期时，等用户下一次点击页面（输入框除外）时顺势续期。
- *   已经授权过、浏览器里 Google 也还登录着时，窗口会自己关掉，用户不需要做任何选择。
- * - 续期成功后通知同步立刻补上一轮；用着的时候在过期前就续上，不会断。
- * - 续期没成功（用户关掉了窗口、需要重新登录 Google）且手上已经没有可用令牌时进入 expired：
- *   同步暂停，界面提示用户点一次「继续同步」。
+ * 这种模式拿不到 refresh token，访问令牌约一小时过期。过期后先尝试静默续期（不弹同意页）；
+ * 浏览器拦截了弹窗或需要重新同意时进入 expired：主界面顶部提示，用户点「继续同步」或「重新连接」。
  * 令牌只放在内存和 sessionStorage，不进 localStorage，也不参与同步。
  */
 
@@ -25,16 +20,6 @@ const TOKEN_KEY = 'chat-demo:sync-google-token'
 const ACCOUNT_KEY = 'chat-demo:sync-google-account'
 /** 提前这么久把令牌当作过期，避免请求发到一半失效 */
 const EXPIRY_MARGIN = 60_000
-/** 令牌剩余不到这么久时，借用户的下一次点击提前续期 */
-const RENEW_AHEAD = 10 * 60_000
-/** 提前续期没成功、手上的令牌还能用时，这么久之内不再借点击重试，免得每次点击都弹窗 */
-const RETRY_DELAY = 2 * 60_000
-/**
- * 点在这些元素上不续期：输入框（弹窗会抢走正在输入的焦点，留到下一次点击），
- * 以及标了 data-no-auth-renewal 的操作，例如「断开」和关闭同步的开关，用户正要离开，不该弹出授权窗口。
- */
-const NO_RENEWAL =
-  'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [data-no-auth-renewal]'
 
 type TokenResponse = {
   access_token?: string
@@ -86,22 +71,13 @@ const writeJson = (storage: () => Storage, key: string, value: unknown) => {
   }
 }
 
-/** 同步已开启且选中了 Google Drive；否则不续期，也不加载 Google 的脚本 */
-let active = false
 let token = readJson<Token>(() => sessionStorage, TOKEN_KEY)
 let account = readJson<SyncAccount>(() => localStorage, ACCOUNT_KEY)
-/** 续期没成功且没有可用令牌：同步暂停，直到用户点「继续同步」或「重新连接」 */
-let paused = false
-/** 提前续期失败后，到这个时间之前不再借点击重试 */
-let retryAt = 0
-/** 正在进行的续期；后台同步拿令牌时等它 */
-let renewing: Promise<string | null> | null = null
-/** 加载好的 Google Identity Services；点击时要同步打开窗口，必须事先加载好 */
-let oauth: GoogleOAuth | null = null
+/** 静默续期失败后置位，直到用户重新连接 */
+let renewalFailed = false
 const listeners = new Set<() => void>()
 
 const tokenValid = () => token !== null && token.expiresAt - EXPIRY_MARGIN > Date.now()
-const tokenFresh = () => token !== null && token.expiresAt - RENEW_AHEAD > Date.now()
 
 const computeState = (): SyncAuthState => {
   if (!CLIENT_ID) {
@@ -110,23 +86,19 @@ const computeState = (): SyncAuthState => {
   if (!account) {
     return { status: 'signedOut' }
   }
-  // 令牌过期但还没试过续期时仍算已连接：下一次点击会续期
-  return { status: paused ? 'expired' : 'signedIn', account }
+  // 令牌过期但还没试过续期时仍算已连接：下一次同步会先静默续期
+  return { status: renewalFailed ? 'expired' : 'signedIn', account }
 }
 
 let state = computeState()
-
-const notify = () => {
-  for (const listener of listeners) {
-    listener()
-  }
-}
 
 const update = () => {
   const next = computeState()
   if (next.status !== state.status || next.account?.id !== state.account?.id) {
     state = next
-    notify()
+    for (const listener of listeners) {
+      listener()
+    }
   }
 }
 
@@ -142,14 +114,13 @@ const setAccount = (next: SyncAccount | null) => {
 
 let gisLoading: Promise<GoogleOAuth> | null = null
 
-/** 需要登录或续期时才加载 Google 的脚本；没配置 Client ID 或没连接过时不会请求 */
+/** 第一次需要登录时才加载 Google 的脚本；没配置 Client ID 或没用到同步时不会请求 */
 const loadGis = (): Promise<GoogleOAuth> =>
   (gisLoading ??= new Promise<GoogleOAuth>((resolve, reject) => {
     const ready = () => {
-      const loaded = window.google?.accounts?.oauth2
-      if (loaded) {
-        oauth = loaded
-        resolve(loaded)
+      const oauth = window.google?.accounts?.oauth2
+      if (oauth) {
+        resolve(oauth)
       } else {
         reject(new Error('Google Identity Services failed to initialize'))
       }
@@ -169,20 +140,17 @@ const loadGis = (): Promise<GoogleOAuth> =>
     throw error
   }))
 
-const preloadGis = () => {
-  void loadGis().catch(() => undefined)
-}
-
 /**
- * 打开 Google 的授权窗口取令牌。必须在用户点击的处理函数里同步调用：浏览器只允许这时打开窗口。
- * prompt 为空字符串时只在需要时显示同意页：已经授权过的账号窗口会自己关掉。
+ * silent：只在需要时显示同意页，用于续期和重新连接同一个账号；
+ * 后台续期时浏览器可能因为没有用户操作而拦截弹窗
  */
-const requestToken = (client: GoogleOAuth, prompt?: string): Promise<Token> =>
-  new Promise<Token>((resolve, reject) => {
-    const tokenClient = client.initTokenClient({
+const requestToken = async (silent: boolean): Promise<Token> => {
+  const oauth = await loadGis()
+  return new Promise<Token>((resolve, reject) => {
+    const client = oauth.initTokenClient({
       client_id: CLIENT_ID,
       scope: SCOPE,
-      ...(prompt === undefined ? {} : { prompt }),
+      ...(silent ? { prompt: '' } : {}),
       ...(account ? { login_hint: account.label } : {}),
       callback: (response) => {
         if (response.error || !response.access_token) {
@@ -202,57 +170,8 @@ const requestToken = (client: GoogleOAuth, prompt?: string): Promise<Token> =>
       error_callback: (error) =>
         reject(new Error(error.message ?? error.type ?? 'Google authorization was cancelled')),
     })
-    tokenClient.requestAccessToken()
+    client.requestAccessToken()
   })
-
-/** 借这次点击续期；成功后通知同步补上一轮 */
-const renew = (client: GoogleOAuth) => {
-  const connected = account
-  renewing = requestToken(client, '')
-    .then((next) => {
-      if (account !== connected) {
-        // 续期期间断开或换了账号，这个令牌作废
-        return null
-      }
-      setToken(next)
-      retryAt = 0
-      notify()
-      return next.value
-    })
-    .catch(() => {
-      if (tokenValid()) {
-        // 提前续期没成功，手上的令牌还能用一阵：先用着，过一会儿再借点击试
-        retryAt = Date.now() + RETRY_DELAY
-        return token?.value ?? null
-      }
-      setToken(null)
-      paused = true
-      update()
-      return null
-    })
-    .finally(() => {
-      renewing = null
-    })
-}
-
-/** 页面上的点击（捕获阶段，先于按钮自己的处理）：令牌没了或快过期时顺势续期 */
-const renewOnClick = (event: MouseEvent) => {
-  if (!active || !account || paused || renewing || tokenFresh() || Date.now() < retryAt) {
-    return
-  }
-  if (event.target instanceof Element && event.target.closest(NO_RENEWAL)) {
-    return
-  }
-  if (!oauth) {
-    // 脚本还没加载好：这次先加载，下一次点击再续期
-    preloadGis()
-    return
-  }
-  renew(oauth)
-}
-
-if (CLIENT_ID && typeof window !== 'undefined') {
-  window.addEventListener('click', renewOnClick, true)
 }
 
 const fetchAccount = async (accessToken: string): Promise<SyncAccount> => {
@@ -280,6 +199,8 @@ const fetchAccount = async (accessToken: string): Promise<SyncAccount> => {
   return { id: user?.permissionId ?? label, label }
 }
 
+let renewing: Promise<string | null> | null = null
+
 export const googleAuth: SyncAuth = {
   getState: () => state,
 
@@ -290,17 +211,9 @@ export const googleAuth: SyncAuth = {
     }
   },
 
-  setActive(next) {
-    active = next
-    if (active && account && CLIENT_ID) {
-      // 正在同步的设备随时可能需要续期：提前加载脚本，点击时才能立刻打开窗口
-      preloadGis()
-    }
-  },
-
   prepare() {
     if (CLIENT_ID) {
-      preloadGis()
+      void loadGis().catch(() => undefined)
     }
   },
 
@@ -308,31 +221,26 @@ export const googleAuth: SyncAuth = {
     if (!CLIENT_ID) {
       throw new Error('Google OAuth client ID is not configured')
     }
-    // 脚本已加载时同步打开窗口；重新连接同一个账号时不再让用户选账号、确认授权
-    const client = oauth ?? (await loadGis())
-    const next = await requestToken(client, account ? '' : undefined)
+    // 重新连接同一个账号（如横幅上的「继续同步」）时不再让用户选账号、确认授权
+    const next = await requestToken(account !== null)
     // 先确认拿到的是哪个账号，再认为连接成功
     const nextAccount = await fetchAccount(next.value)
     setToken(next)
     setAccount(nextAccount)
-    paused = false
-    retryAt = 0
+    renewalFailed = false
     update()
-    // 状态没变（如已连接时重新连接）也要通知同步立刻补上一轮
-    notify()
   },
 
   async disconnect() {
     const current = token
     setToken(null)
     setAccount(null)
-    paused = false
-    retryAt = 0
+    renewalFailed = false
     update()
     if (current) {
       try {
-        const client = oauth ?? (await loadGis())
-        client.revoke(current.value)
+        const oauth = await loadGis()
+        oauth.revoke(current.value)
       } catch {
         // 撤销失败不影响本机断开；令牌一小时内自行失效
       }
@@ -340,20 +248,29 @@ export const googleAuth: SyncAuth = {
   },
 
   async getToken({ refresh = false } = {}) {
-    if (!CLIENT_ID || !account || paused) {
+    if (!CLIENT_ID || !account) {
       return null
     }
-    if (renewing) {
-      return renewing
-    }
-    if (refresh) {
-      // 服务器拒绝了手上的令牌
-      setToken(null)
-    } else if (tokenValid()) {
+    if (!refresh && tokenValid()) {
       return token?.value ?? null
     }
-    // 后台打开授权窗口会被浏览器拦截：等用户下一次点击时续期，续期成功后会通知同步
-    preloadGis()
-    return null
+    if (renewalFailed) {
+      return null
+    }
+    renewing ??= requestToken(true)
+      .then((next) => {
+        setToken(next)
+        return next.value
+      })
+      .catch(() => {
+        setToken(null)
+        renewalFailed = true
+        update()
+        return null
+      })
+      .finally(() => {
+        renewing = null
+      })
+    return renewing
   },
 }

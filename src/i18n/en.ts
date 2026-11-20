@@ -392,6 +392,8 @@ export const en = {
   syncPrivacyLink: 'Privacy policy',
   syncProvider: 'Sync to',
   syncProviderGoogleDrive: 'Google Drive',
+  syncProviderGoogleDriveNote:
+    "Due to Google's policy, a web app without a backend only gets about an hour of access each time. After it expires, or when you reopen the app, you'll need to authorize again to keep syncing.",
   syncProviderMock: 'Local mock (dev only)',
   syncAccount: 'Account',
   syncAccountSignedOut: 'Not connected',

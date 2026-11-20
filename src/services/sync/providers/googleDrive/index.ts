@@ -5,6 +5,7 @@ import { createDriveBackend } from './backend.js'
 export const googleDriveProvider: SyncProvider = {
   id: 'google-drive',
   label: 'syncProviderGoogleDrive',
+  note: 'syncProviderGoogleDriveNote',
   auth: googleAuth,
   createBackend: () => createDriveBackend(googleAuth),
 }

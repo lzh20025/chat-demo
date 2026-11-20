@@ -93,8 +93,7 @@ export const SyncSetting = ({ disabled }: { disabled: boolean }) => {
 
   return (
     <>
-      {/* 开关同步时不借这次点击续期授权（见 googleDrive/auth.ts） */}
-      <div className={`${styles.cell} ${styles.row}`} data-no-auth-renewal>
+      <div className={`${styles.cell} ${styles.row}`}>
         <div className={styles.text}>
           <div className={styles.label}>{t('syncTitle')}</div>
           <div className={styles.description}>
@@ -122,6 +121,9 @@ export const SyncSetting = ({ disabled }: { disabled: boolean }) => {
             <div className={`${styles.cell} ${styles.row}`}>
               <div className={styles.text}>
                 <div className={styles.label}>{t('syncProvider')}</div>
+                {provider.note ? (
+                  <div className={styles.description}>{t(provider.note)}</div>
+                ) : null}
               </div>
               <Select
                 value={provider.id}
@@ -140,6 +142,10 @@ export const SyncSetting = ({ disabled }: { disabled: boolean }) => {
               <div className={accountStatus.error ? styles.error : styles.description}>
                 {t(accountStatus.key, accountStatus.params)}
               </div>
+              {/* 只有一个服务商时不显示「同步到」，说明放在这里 */}
+              {providers.length <= 1 && provider.note ? (
+                <div className={styles.description}>{t(provider.note)}</div>
+              ) : null}
             </div>
             {auth && authState?.status !== 'unconfigured' ? (
               authState?.status === 'signedIn' ? (
@@ -148,7 +154,6 @@ export const SyncSetting = ({ disabled }: { disabled: boolean }) => {
                   size="m"
                   className={styles.cellButton}
                   disabled={disabled || running}
-                  data-no-auth-renewal
                   onClick={() => void auth.disconnect()}
                 >
                   {t('syncDisconnect')}

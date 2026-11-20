@@ -8,7 +8,7 @@ import { useAuthState } from './SyncSetting.js'
 
 /**
  * 同步因授权失效而暂停时，在主界面顶部提示并一键继续，不需要到设置里找「重新连接」。
- * 平时续期在用户点击页面时自动完成，只有续期没成功（如关掉了授权窗口）才会出现。
+ * Google 的访问令牌约一小时过期、关掉标签页后也不保留，后台续期又常被浏览器拦截，这时就会出现。
  * className：沿用主界面其他提示条的样式。
  */
 export const SyncPausedNotice = ({ className }: { className: string }) => {
