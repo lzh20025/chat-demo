@@ -238,19 +238,38 @@ export const dropboxAuth: SyncAuth = {
   },
 
   async disconnect() {
-    const current = tokenValid() ? token?.value : undefined
+    const cached = tokenValid() ? token?.value : undefined
+    const refreshToken = stored?.refreshToken
     setToken(null)
     setStored(null)
     expired = false
     connectError = undefined
     update()
-    if (current) {
-      // 撤销失败不影响本机断开；refresh token 已经从本机删除
-      void request(REVOKE_URL, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${current}` },
-      }).catch(() => undefined)
-    }
+    // 在 Dropbox 里撤销授权：撤销访问令牌会连同它的 refresh token 一起作废。
+    // 手上没有可用的访问令牌（令牌已过期），或者它已经被 Dropbox 拒绝时，先用 refresh token 换一个再撤销，
+    // 否则本机删掉了 refresh token，应用在 Dropbox 里却仍然有授权。撤销失败不影响本机断开。
+    const revoke = (accessToken: string) =>
+      request(REVOKE_URL, { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` } })
+    void (async () => {
+      if (cached) {
+        try {
+          await revoke(cached)
+          return
+        } catch (error) {
+          if (!(error instanceof ApiError) || error.status !== 401) {
+            throw error
+          }
+        }
+      }
+      if (refreshToken) {
+        const response = await tokenRequest({
+          grant_type: 'refresh_token',
+          refresh_token: refreshToken,
+          client_id: APP_KEY,
+        })
+        await revoke(response.access_token)
+      }
+    })().catch(() => undefined)
   },
 
   async getToken({ refresh = false } = {}) {

@@ -89,7 +89,7 @@ collections/settings.ts  设置
 
 连接时整页跳转到 Dropbox 的授权页，授权后回到应用所在的目录（如 `https://<user>.github.io/<repo>/`），地址里带着 `code` 和 `state`。应用启动时核对 `state`、用 `code` 和 PKCE verifier 换令牌，再把这两个参数从地址栏去掉；Service Worker 缓存页面时也去掉查询参数，一次性的 `code` 不会写进缓存。用跳转而不用弹窗：不依赖用户手势，手机上「添加到主屏幕」的应用里也能用。
 
-refresh token 和账号放在 localStorage（和 API Key 一样只在本机，不参与同步），访问令牌放在 sessionStorage。断开时删除它们并撤销访问令牌。
+refresh token 和账号放在 localStorage（和 API Key 一样只在本机，不参与同步），访问令牌放在 sessionStorage。断开时删除它们，并在 Dropbox 里撤销授权：撤销访问令牌会连同 refresh token 一起作废；当前标签页没有可用的访问令牌时，先用 refresh token 换一个再撤销。
 
 配置：在 [Dropbox App Console](https://www.dropbox.com/developers/apps) 创建应用，选 **Scoped access** 和 **App folder**（只能访问 `Apps/<应用名>` 这一个文件夹）；在 Permissions 里勾选 `account_info.read`、`files.metadata.read`、`files.content.read`、`files.content.write`；在 OAuth 2 的 Redirect URIs 里登记站点所在的目录（本地开发是 `http://localhost:8090/`）。构建时通过环境变量 `DROPBOX_APP_KEY` 传入 App key（或 `createConfig({ dropboxAppKey })`）；App key 是公开标识，不是密钥。没有配置时界面显示「未配置」。
 
