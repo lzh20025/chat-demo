@@ -1,6 +1,6 @@
 # 云端同步
 
-把会话、记忆和偏好设置同步到用户自己的云端硬盘，在多台设备间自动保持一致。应用没有自己的账号系统：登录的是存储服务商的账号（目前是 Google），数据只存在用户自己的空间里。
+把会话、记忆和偏好设置同步到用户自己的存储，在多台设备间自动保持一致。应用没有自己的账号系统：连接的是存储服务商的账号（Google Drive、Dropbox，或用户自己的 WebDAV 服务器），数据只存在用户自己的空间里。
 
 ## 同步什么
 
@@ -26,6 +26,8 @@ plan.ts         纯函数：比较本地、远端、删除记录，得出这一�
  └─ collection.ts  SyncCollection 一种要同步的数据：列出本地条目、读写、合并
 
 providers/googleDrive/   Google 登录（GIS 令牌模式）+ Drive appDataFolder
+providers/dropbox/       Dropbox 登录（授权码 + PKCE，refresh token）+ App folder
+providers/webdav/        WebDAV：用户填写文件夹地址、用户名和密码（connectFields）
 providers/mock.ts        本地模拟后端，仅开发构建
 collections/sessions.ts  会话；合并逻辑在 sessionMerge.ts
 collections/memory.ts    记忆；合并逻辑在 memoryMerge.ts
@@ -34,7 +36,7 @@ collections/settings.ts  设置
 
 引擎和设置界面都不认识具体的服务商或数据种类。
 
-**新增一个服务商**（WebDAV、OneDrive…）：实现 `SyncBackend`（五个方法）和 `SyncAuth`（不需要登录则为 `null`），组成一个 `SyncProvider`，在 `index.ts` 里 `registerSyncProvider`。它会自动出现在设置的「同步到」里。
+**新增一个服务商**（OneDrive、S3…）：实现 `SyncBackend`（五个方法）和 `SyncAuth`（不需要登录则为 `null`），组成一个 `SyncProvider`，在 `index.ts` 里 `registerSyncProvider`。它会自动出现在设置的「同步到」里。连接前要用户填写信息的（如 WebDAV 的地址和密码），在 `connectFields` 里声明，设置里会显示表单，填写的值传给 `SyncAuth.connect(values)`；`note` 是选中时显示的说明。授权要跳转到服务商页面再回来的（如 Dropbox），回来后设置会自动重新打开。
 
 **新增一种要同步的数据**：实现 `SyncCollection`，在 `index.ts` 里 `registerSyncCollection`。本地改动时间和同步基线可以放在 IndexedDB 的 `syncMeta` 里（见 `chat/db.ts`），在数据写入的同一事务里更新。
 
@@ -81,6 +83,31 @@ collections/settings.ts  设置
 
 访问令牌只放在内存和 sessionStorage。换了 Google 账号或服务商时，全部同步基线作废，按首次同步处理（与新账号里已有的数据合并）。
 
+## Dropbox 登录
+
+授权码 + PKCE，全程在浏览器里完成，没有 client secret。申请 `token_access_type=offline` 拿到 refresh token，访问令牌是短期的，过期后在后台用普通的 `fetch` 换新的，不弹窗、不需要用户手势，所以连接一次就一直可用，直到用户断开或在 Dropbox 里撤销授权（这时进入 `expired`，主界面提示「继续同步」）。
+
+连接时整页跳转到 Dropbox 的授权页，授权后回到应用所在的目录（如 `https://<user>.github.io/<repo>/`），地址里带着 `code` 和 `state`。应用启动时核对 `state`、用 `code` 和 PKCE verifier 换令牌，再把这两个参数从地址栏去掉；Service Worker 缓存页面时也去掉查询参数，一次性的 `code` 不会写进缓存。用跳转而不用弹窗：不依赖用户手势，手机上「添加到主屏幕」的应用里也能用。
+
+refresh token 和账号放在 localStorage（和 API Key 一样只在本机，不参与同步），访问令牌放在 sessionStorage。断开时删除它们并撤销访问令牌。
+
+配置：在 [Dropbox App Console](https://www.dropbox.com/developers/apps) 创建应用，选 **Scoped access** 和 **App folder**（只能访问 `Apps/<应用名>` 这一个文件夹）；在 Permissions 里勾选 `account_info.read`、`files.metadata.read`、`files.content.read`、`files.content.write`；在 OAuth 2 的 Redirect URIs 里登记站点所在的目录（本地开发是 `http://localhost:8090/`）。构建时通过环境变量 `DROPBOX_APP_KEY` 传入 App key（或 `createConfig({ dropboxAppKey })`）；App key 是公开标识，不是密钥。没有配置时界面显示「未配置」。
+
+## WebDAV
+
+用户在设置里填写文件夹地址、用户名和密码（建议用服务器生成的应用专用密码），连接时先 `PROPFIND` 确认能访问，文件夹不存在就 `MKCOL` 创建。之后用 HTTP Basic 访问：`PROPFIND Depth: 1` 列目录，`GET` / `PUT` / `DELETE` 读写，版本用 `ETag`（服务器不给时用修改时间和大小）。请求都带 `cache: 'no-store'`，避免浏览器缓存把其他设备刚写的文件挡住。凭据不会过期；服务器返回 401 / 403（改了密码、撤销了应用密码）时进入 `expired`，主界面提示，点「打开设置」重新填写（地址和用户名会预填）。
+
+浏览器直接访问用户的服务器，所以服务器（或前面的反向代理）要允许本站的跨域请求，例如：
+
+```
+Access-Control-Allow-Origin: https://<user>.github.io
+Access-Control-Allow-Methods: GET, PUT, DELETE, PROPFIND, MKCOL, OPTIONS
+Access-Control-Allow-Headers: Authorization, Depth, Content-Type
+Access-Control-Expose-Headers: ETag
+```
+
+预检请求（`OPTIONS`）要在认证之前直接返回 2xx。没有暴露 `ETag` 时每次上传后会多查一次版本。
+
 ## 开发与验证
 
 - `pnpm test`：`__tests__/` 覆盖规划、引擎（内存后端 + 一个最简单的数据种类）、会话与记忆的合并、设置导出不含密钥。
@@ -89,7 +116,9 @@ collections/settings.ts  设置
 ## 已知限制
 
 - 浏览器端拿不到 refresh token，访问令牌约一小时过期，关掉标签页后也不保留。过期后会尝试静默续期；被浏览器拦截弹窗时状态变为「授权已过期」，自动同步暂停，主界面顶部提示，点「继续同步」（或设置里的「重新连接」）即可，同一个账号不需要重新选择。设置里选中 Google Drive 时会说明这个限制。
-- 未通过 Google 验证的 OAuth 应用只有测试用户能登录；`file://` 打开的页面无法登录。
+- 未通过 Google 验证的 OAuth 应用只有测试用户能登录；`file://` 打开的页面无法登录（Dropbox 同理，回调地址必须是登记过的 http(s) 地址）。
+- Dropbox 的应用在 App Console 里处于开发状态时，能连接的用户数有限，公开使用前需要申请上线。
+- WebDAV 依赖服务器的跨域配置，很多服务器默认不允许；密码以明文保存在本机 localStorage，和 API Key 一样。
 - 上传前复查版本只能把覆盖窗口缩到一次请求之内；极端情况下后写者仍会覆盖前者（Drive 保留文件的历史版本）。
 - 两台设备并发新增的内容表现为并列的分支，另一台设备的那条需要用分支切换查看。
 - 判断删除与编辑的先后依赖各设备的时钟；时钟相差很大时，「删除后又编辑」的先后可能判断反。
